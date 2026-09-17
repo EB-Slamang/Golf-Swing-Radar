@@ -79,17 +79,41 @@ wavFile_CW_All = {
 %                   % 'Ball3.wav';
 %                     };
 
-fc = 24e9; %center frequency (Hz)
-% CPI_arr = [0.01 0.02 0.05 0.075 0.1]; %array to check different CPI's
-CPI = 0.02; % seconds (chosen for finer time resolution to track faster moving objects)
-%0.2 for Backswing, 0.02 for Downswing and Fullswing Tests
+%% radar and spectrogram parameters
+fc = 24e9;             %radar centre frequency (Hz)
+c = 3e8;               %speed of light (m/s)
+lambda = c/fc;         %radar wavelength (m)
 
-% PFA          = 1e-3;   % relaxed back up now that binary integration handles the specks
-% RefWindow    = 48;
-% GuardCells   = 8;       % widened to cover the ridge's Doppler extent, avoid self-masking
-% MinSpeed     = 1.5;
-% MinRunLength = 3;       % require a detection to persist 3+ consecutive time columns
+CPI = 0.02;            %coherent processing interval (s)
+overlapFrac = 0.95;    %overlap between spectrogram frames
+maxSpeed = 60;         %maximum speed shown on the plots (m/s)
 
+
+%% CA-CFAR parameters
+PFA = 1e-6;                 %desired probability of false alarm
+RefWindow = 32;             %total number of reference cells
+GuardCells = 20;            %keeps the wide club return out of the references
+MinimumDetectionSpeed = 1.5; %m/s
+
+% Use more cells above the CUT because the upper side of the club return
+% normally has cleaner noise than the lower-speed side.
+UseAsymmetricCFAR = true;
+AsymmetricMaxSpeed = 25;
+LowerRefCells = 2;
+UpperRefCells = RefWindow - LowerRefCells;
+
+ % Setting LowerRefCells to zero is fully one-sided.
+N_half = RefWindow/2;
+
+%scaling factor when using the sum of the reference cells
+alpha_CA = PFA^(-1/RefWindow) - 1;
+
+%% detection cleaning parameters
+MinimumDetectionPowerDB = -40;
+%% plot settings
+SpectrogramBounds = [-50 0];
+ShowPowerGatedCandidates = true;
+%% process each recording
 for i = 1:length(wavFile_CW_All)
 
     recordingRelativePath = wavFile_CW_All{i};
@@ -109,25 +133,193 @@ for i = 1:length(wavFile_CW_All)
      % Use the first audio channel as the radar baseband signal
     y = Y(:,1);
     
-    framelen =  2^(nextpow2(round(CPI*fs))); % chosen as closest power of 2
-    overlapFrac = 0.95; 
+    %% form the spectrogram
+    framelen = 2^(nextpow2(round(CPI*fs)));
     n_fft = framelen;
-    
-    maxSpeed = 60; % (m/s) maximum speed to display (times by 3.6 to get km/h)
-    %used 4 m/s for pendulum test, 10 for Backswing Tests, 12 for Downswing Tests and 23 Fullswing Tests
+
     n = 0:framelen-1;
-    win = 0.54 - 0.46*cos(2*pi*n/(framelen-1)); % creating hamming window
+    win = 0.54 - 0.46*cos(2*pi*n/(framelen-1));
+
+    [S,f,t] = compute_spectrogram(y,fs,framelen,overlapFrac,win,n_fft);
+
+    f = f(:);
+    t = t(:).';
+
+    %% convert Doppler frequency to radial speed
+    speed = f*lambda/2;
     
+    %% square-law detector
     
+    RawPowerData = abs(S).^2;
     
-    [S, f, t] = compute_spectrogram(y, fs, framelen, overlapFrac, win, n_fft);
+    % Estimate the normal noise level separately for every Doppler bin.
+    % The median is used because the golf swing only occupies a small
+    % portion of the complete recording.
+    NoiseFloorPerBin = median(RawPowerData,2);
     
-    bnds = [-50 0]; %intensity color bounds in dB
+    % Normalise each Doppler bin by its usual background level.
+    PowerData = RawPowerData ./ max(NoiseFloorPerBin,eps); % eps used to avoid Inf error
     
-    % PlotSpectrogram(S,f,t,wavFile_CW,bnds);
+    % Light averaging over time helps connect adjacent detections.
+    % Only three frames are used so that fast transitions are not blurred.
+    PowerData = movmean(PowerData,3,2);
+    
+    [nSpeedBins,nTimeBins] = size(PowerData);
+
+    %% apply CA-CFAR down the speed bins of each time column
+
+    Threshold = nan(nSpeedBins,nTimeBins);
+    DetectionMapRaw = false(nSpeedBins,nTimeBins);
+    ValidCUTMask = false(nSpeedBins,1);
+
+    %1 = asymmetric window, 2 = normal symmetric window
+    CFARMode = zeros(nSpeedBins,1,'uint8');
+
+    cfarSpeedIdx = find(speed >= MinimumDetectionSpeed & speed <= maxSpeed);
+
+    for speedIdx = cfarSpeedIdx.'
+
+        useAsymmetric = UseAsymmetricCFAR && speed(speedIdx) <= AsymmetricMaxSpeed;
+
+        if useAsymmetric
+            nLower = LowerRefCells;
+            nUpper = UpperRefCells;
+            CFARModeValue = 1;
+        else
+            nLower = N_half;
+            nUpper = N_half;
+            CFARModeValue = 2;
+        end
+
+        %Move reference cells to the other side when the desired split does
+        %not fit. This keeps the total number of reference cells constant.
+        availableLowerCells = max(0,speedIdx-GuardCells-1);
+        availableUpperCells = max(0,nSpeedBins-speedIdx-GuardCells);
+
+        if nLower > availableLowerCells
+            missingCells = nLower-availableLowerCells;
+            nLower = availableLowerCells;
+            nUpper = nUpper+missingCells;
+        end
+
+        if nUpper > availableUpperCells
+            missingCells = nUpper-availableUpperCells;
+            nUpper = availableUpperCells;
+            nLower = nLower+missingCells;
+        end
+
+        if nLower > availableLowerCells || nUpper > availableUpperCells
+            continue;
+        end
+
+        firstLowerIdx = speedIdx - GuardCells - nLower;
+        lastLowerIdx = speedIdx - GuardCells - 1;
+        firstUpperIdx = speedIdx + GuardCells + 1;
+        lastUpperIdx = speedIdx + GuardCells + nUpper;
+
+        %check that all the required reference cells are available
+        if (nLower > 0 && firstLowerIdx < 1) || (nUpper > 0 && lastUpperIdx > nSpeedBins)
+            continue;
+        end
+
+        g_hat_CA = zeros(1,nTimeBins);
+
+        if nLower > 0
+            lowerReferenceCells = PowerData(firstLowerIdx:lastLowerIdx,:);
+            g_hat_CA = g_hat_CA + sum(lowerReferenceCells,1);
+        end
+
+        if nUpper > 0
+            upperReferenceCells = PowerData(firstUpperIdx:lastUpperIdx,:);
+            g_hat_CA = g_hat_CA + sum(upperReferenceCells,1);
+        end
+
+        Threshold(speedIdx,:) = alpha_CA*g_hat_CA;
+        
+        DetectionMapRaw(speedIdx,:) = PowerData(speedIdx,:) >= Threshold(speedIdx,:);
+
+        ValidCUTMask(speedIdx) = true;
+        CFARMode(speedIdx) = CFARModeValue;
+    end
+
+    %% keep the speed range used for the plots
+    speedRegionMask = speed >= MinimumDetectionSpeed & speed <= maxSpeed;
+
+    displayIdx = find(speedRegionMask);
+    DisplaySpeed = speed(displayIdx);
+
+    % Original power is used for plotting and selecting the strongest return.
+    DisplayPower = RawPowerData(displayIdx,:);
+
+    % Whitened power is used by CFAR.
+    DisplayCFARPower = PowerData(displayIdx,:); 
+    DisplayDetectionMapRaw = DetectionMapRaw(displayIdx,:);
+
+     %% normalise and convert to dB for plotting
+    normalisationPower = max(max(DisplayPower(:)),eps);
+    DisplayPowerDB = 10*log10(DisplayPower/normalisationPower + eps);
+    %% apply the power gate 
+
+    DetectionCandidates = DisplayDetectionMapRaw & (DisplayPowerDB >= MinimumDetectionPowerDB);
+    
+     %% original spectrogram and speed-time plot
+    SpectrogramBounds = [-50 0]; %intensity color bounds in dB
+    
+    % PlotSpectrogram(S,f,t,wavFile_CW,SpectrogramBounds);
 
     
-    PlotSpeedvsTime(S,f,t,fc,wavFile_CW,maxSpeed,bnds);
+    PlotSpeedvsTime(S,f,t,fc,wavFile_CW,maxSpeed,SpectrogramBounds);
 
-    % end
+    %% choose which markers to display
+    [markerTimes,markerSpeeds] = selectDetectionMarkers( ...
+        DetectionCandidates,DisplaySpeed,t);
+
+    %% speed-time plot with the detections
+    figure;
+    imagesc(t,DisplaySpeed,DisplayPowerDB,SpectrogramBounds);
+    axis xy;
+    hold on;
+
+    if ShowPowerGatedCandidates
+        [candidateRows,candidateCols] = find(DetectionCandidates);
+        plot(t(candidateCols),DisplaySpeed(candidateRows),'mx','MarkerSize',4);
+    end
+
+    plot(markerTimes,markerSpeeds, ...
+        'kx','MarkerSize',6,'LineWidth',1);
+
+    xlabel('Time (s)');
+    ylabel('Radial speed magnitude (m/s)');
+    title(sprintf('%s: column-wise CA-CFAR detections',wavFile_CW), ...
+          'Interpreter','none');
+    colorbarHandle = colorbar;
+    ylabel(colorbarHandle,'Normalised intensity (dB)');
+    colormap('jet');
+
+   
+
 end 
+
+
+%%functions
+
+function [markerTimes,markerSpeeds] = selectDetectionMarkers( ...
+    detectionMap,displaySpeed, timeVector)
+
+    [~,nTimeBins] = size(detectionMap);
+    markerTimes = [];
+    markerSpeeds = [];
+
+    for timeIdx = 1:nTimeBins
+        detectedRows = find(detectionMap(:,timeIdx));
+
+        if isempty(detectedRows)
+            continue;
+        end
+
+        selectedSpeeds = displaySpeed(detectedRows);
+        
+        markerTimes = [markerTimes; repmat(timeVector(timeIdx),numel(selectedSpeeds),1)];
+        markerSpeeds = [markerSpeeds; selectedSpeeds(:)];
+    end
+end
