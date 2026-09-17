@@ -1,0 +1,15 @@
+# Computer-specific configuration
+config_local.m
+
+# Recordings and generated outputs
+/datasets/
+/results/
+/outputs/
+*.wav
+*.mp4
+*.mov
+
+# MATLAB temporary files
+*.asv
+*.m~
+matlab.mat
