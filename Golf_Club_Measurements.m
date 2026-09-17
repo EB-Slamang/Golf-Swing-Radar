@@ -100,13 +100,6 @@ MinimumDetectionSpeed = 1.5; %m/s
 UseAsymmetricCFAR = true;
 AsymmetricMaxSpeed = 25;
 LowerRefCells = 2;
-UpperRefCells = RefWindow - LowerRefCells;
-
- % Setting LowerRefCells to zero is fully one-sided.
-N_half = RefWindow/2;
-
-%scaling factor when using the sum of the reference cells
-alpha_CA = PFA^(-1/RefWindow) - 1;
 
 %% detection cleaning parameters
 MinimumDetectionPowerDB = -40;
@@ -166,81 +159,10 @@ for i = 1:length(wavFile_CW_All)
     
     [nSpeedBins,nTimeBins] = size(PowerData);
 
-    %% apply CA-CFAR down the speed bins of each time column
-
-    Threshold = nan(nSpeedBins,nTimeBins);
-    DetectionMapRaw = false(nSpeedBins,nTimeBins);
-    ValidCUTMask = false(nSpeedBins,1);
-
-    %1 = asymmetric window, 2 = normal symmetric window
-    CFARMode = zeros(nSpeedBins,1,'uint8');
-
-    cfarSpeedIdx = find(speed >= MinimumDetectionSpeed & speed <= maxSpeed);
-
-    for speedIdx = cfarSpeedIdx.'
-
-        useAsymmetric = UseAsymmetricCFAR && speed(speedIdx) <= AsymmetricMaxSpeed;
-
-        if useAsymmetric
-            nLower = LowerRefCells;
-            nUpper = UpperRefCells;
-            CFARModeValue = 1;
-        else
-            nLower = N_half;
-            nUpper = N_half;
-            CFARModeValue = 2;
-        end
-
-        %Move reference cells to the other side when the desired split does
-        %not fit. This keeps the total number of reference cells constant.
-        availableLowerCells = max(0,speedIdx-GuardCells-1);
-        availableUpperCells = max(0,nSpeedBins-speedIdx-GuardCells);
-
-        if nLower > availableLowerCells
-            missingCells = nLower-availableLowerCells;
-            nLower = availableLowerCells;
-            nUpper = nUpper+missingCells;
-        end
-
-        if nUpper > availableUpperCells
-            missingCells = nUpper-availableUpperCells;
-            nUpper = availableUpperCells;
-            nLower = nLower+missingCells;
-        end
-
-        if nLower > availableLowerCells || nUpper > availableUpperCells
-            continue;
-        end
-
-        firstLowerIdx = speedIdx - GuardCells - nLower;
-        lastLowerIdx = speedIdx - GuardCells - 1;
-        firstUpperIdx = speedIdx + GuardCells + 1;
-        lastUpperIdx = speedIdx + GuardCells + nUpper;
-
-        %check that all the required reference cells are available
-        if (nLower > 0 && firstLowerIdx < 1) || (nUpper > 0 && lastUpperIdx > nSpeedBins)
-            continue;
-        end
-
-        g_hat_CA = zeros(1,nTimeBins);
-
-        if nLower > 0
-            lowerReferenceCells = PowerData(firstLowerIdx:lastLowerIdx,:);
-            g_hat_CA = g_hat_CA + sum(lowerReferenceCells,1);
-        end
-
-        if nUpper > 0
-            upperReferenceCells = PowerData(firstUpperIdx:lastUpperIdx,:);
-            g_hat_CA = g_hat_CA + sum(upperReferenceCells,1);
-        end
-
-        Threshold(speedIdx,:) = alpha_CA*g_hat_CA;
-        
-        DetectionMapRaw(speedIdx,:) = PowerData(speedIdx,:) >= Threshold(speedIdx,:);
-
-        ValidCUTMask(speedIdx) = true;
-        CFARMode(speedIdx) = CFARModeValue;
-    end
+    %% Apply CA-CFAR
+    [DetectionMapRaw, Threshold] = CA_CFAR(PowerData, speed, ...
+    PFA, RefWindow, GuardCells, MinimumDetectionSpeed, maxSpeed, ...
+    UseAsymmetricCFAR, AsymmetricMaxSpeed, LowerRefCells);
 
     %% keep the speed range used for the plots
     speedRegionMask = speed >= MinimumDetectionSpeed & speed <= maxSpeed;
