@@ -1,6 +1,6 @@
-clear;
-close all;
-clc;
+% clear;
+% close all;
+% clc;
 
 %% Project setup
 projectRoot = fileparts(mfilename('fullpath'));
@@ -20,11 +20,11 @@ assert(isfolder(dataRoot), 'Dataset folder does not exist: %s', dataRoot);
 %% Recording selection
 wavFile_CW_All = {
     fullfile('P002', 'session1', 'Driver_FullSwing1.wav')
-    fullfile('P002', 'session1', 'Driver_FullSwing2.wav')
-    fullfile('P002', 'session1', 'Driver_FullSwing3.wav')
-    fullfile('P002', 'session1', 'Driver_FullSwing4.wav')
-    fullfile('P002', 'session1', 'Driver_FullSwing5.wav')
-    fullfile('P002', 'session1', 'Driver_FullSwing6_stoponfollowthru.wav')
+    % fullfile('P002', 'session1', 'Driver_FullSwing2.wav')
+    % fullfile('P002', 'session1', 'Driver_FullSwing3.wav')
+    % fullfile('P002', 'session1', 'Driver_FullSwing4.wav')
+    % fullfile('P002', 'session1', 'Driver_FullSwing5.wav')
+    % fullfile('P002', 'session1', 'Driver_FullSwing6_stoponfollowthru.wav')
     
                     };
             
@@ -90,19 +90,27 @@ maxSpeed = 60;         %maximum speed shown on the plots (m/s)
 
 
 %% CA-CFAR parameters
-PFA = 1e-6;                 %desired probability of false alarm
+PFA = 1e-3;                 %desired probability of false alarm
 RefWindow = 32;             %total number of reference cells
-GuardCells = 20;            %keeps the wide club return out of the references
+GuardCells = 30;            %keeps the wide club return out of the references
 MinimumDetectionSpeed = 1.5; %m/s
 
 % Use more cells above the CUT because the upper side of the club return
 % normally has cleaner noise than the lower-speed side.
 UseAsymmetricCFAR = true;
+UseOSCFAR = true;
 AsymmetricMaxSpeed = 25;
 LowerRefCells = 2;
 
+Rank = ceil(0.33 * RefWindow); % OS CFAR parameter for kth smallest detection i.e 24th smallest reference power with refWindow =32
+
 %% detection cleaning parameters
 MinimumDetectionPowerDB = -40;
+
+
+M = 3;                  % Minimum number of supporting time columns
+N = 5;                  % Number of time columns in the window; must be odd
+ToleranceBins = 2;      % Allowed speed-bin distance above/below the candidate
 %% plot settings
 SpectrogramBounds = [-50 0];
 ShowPowerGatedCandidates = true;
@@ -160,10 +168,24 @@ for i = 1:length(wavFile_CW_All)
     [nSpeedBins,nTimeBins] = size(PowerData);
 
     %% Apply CA-CFAR
-    [DetectionMapRaw, Threshold] = CA_CFAR(PowerData, speed, ...
+    [DetectionMapCA, ThresholdCA] = CA_CFAR(PowerData, speed, ...
     PFA, RefWindow, GuardCells, MinimumDetectionSpeed, maxSpeed, ...
     UseAsymmetricCFAR, AsymmetricMaxSpeed, LowerRefCells);
 
+    %% Apply OS-CFAR
+    [DetectionMapOS, ThresholdOS] = OS_CFAR(PowerData, speed, ...
+    PFA, RefWindow, GuardCells, MinimumDetectionSpeed, maxSpeed, ...
+    UseAsymmetricCFAR, AsymmetricMaxSpeed, LowerRefCells, Rank);
+
+
+    %% select the detector output used for plotting
+    if UseOSCFAR
+        DetectionMapRaw = DetectionMapOS;
+        Threshold = ThresholdOS;
+    else
+        DetectionMapRaw = DetectionMapCA;
+        Threshold = ThresholdCA;
+    end
     %% keep the speed range used for the plots
     speedRegionMask = speed >= MinimumDetectionSpeed & speed <= maxSpeed;
 
@@ -180,9 +202,88 @@ for i = 1:length(wavFile_CW_All)
      %% normalise and convert to dB for plotting
     normalisationPower = max(max(DisplayPower(:)),eps);
     DisplayPowerDB = 10*log10(DisplayPower/normalisationPower + eps);
-    %% apply the power gate 
 
-    DetectionCandidates = DisplayDetectionMapRaw & (DisplayPowerDB >= MinimumDetectionPowerDB);
+    %% Inspect a point in a missing section
+    CheckTime = 2.53;     % Change to match the current recording
+    CheckSpeed = 25;      % m/s; choose a point on the visible return
+    
+    [~, timeIdx] = min(abs(t - CheckTime));
+    [~, displayRow] = min(abs(DisplaySpeed - CheckSpeed));
+    
+    speedIdx = displayIdx(displayRow);
+    
+    cutPower = PowerData(speedIdx, timeIdx);
+    osThreshold = ThresholdOS(speedIdx, timeIdx);
+    
+    cfarMarginDB = 10*log10( ...
+        max(cutPower, eps) / max(osThreshold, eps));
+    
+    gateMarginDB = DisplayPowerDB(displayRow, timeIdx) ...
+        - MinimumDetectionPowerDB;
+    
+    fprintf('\nChecking t = %.4f s, speed = %.2f m/s\n', ...
+        t(timeIdx), DisplaySpeed(displayRow));
+    
+    fprintf('OS-CFAR margin: %.2f dB\n', cfarMarginDB);
+    fprintf('Power-gate margin: %.2f dB\n', gateMarginDB);
+    %% Apply the same power gate to both detectors
+    PowerGate = DisplayPowerDB >= MinimumDetectionPowerDB;
+    
+    CandidatesCA = DetectionMapCA(displayIdx, :) & PowerGate;
+    CandidatesOS = DetectionMapOS(displayIdx, :) & PowerGate;
+    
+    %% Compare detection maps
+    figure;
+    
+    subplot(2,1,1);
+    imagesc(t, DisplaySpeed, DisplayPowerDB, SpectrogramBounds);
+    axis xy;
+    hold on;
+    
+    [rowsCA, colsCA] = find(CandidatesCA);
+    plot(t(colsCA), DisplaySpeed(rowsCA), 'kx', 'MarkerSize', 4);
+    
+    title([wavFile_CW ' — CA-CFAR'], 'Interpreter', 'none');
+    xlabel('Time (s)');
+    ylabel('Radial speed (m/s)');
+    colorbar;
+    
+    subplot(2,1,2);
+    imagesc(t, DisplaySpeed, DisplayPowerDB, SpectrogramBounds);
+    axis xy;
+    hold on;
+    
+    [rowsOS, colsOS] = find(CandidatesOS);
+    plot(t(colsOS), DisplaySpeed(rowsOS), 'kx', 'MarkerSize', 4);
+    
+    title(sprintf('%s — OS-CFAR, rank %d/%d', ...
+        wavFile_CW, Rank, RefWindow), 'Interpreter', 'none');
+    xlabel('Time (s)');
+    ylabel('Radial speed (m/s)');
+    colorbar;
+    
+    colormap('jet');
+
+    figure;
+
+    plot(DisplaySpeed, ...
+        10*log10(max(PowerData(displayIdx, timeIdx), eps)), ...
+        'b', 'LineWidth', 1.2);
+    hold on;
+    
+    plot(DisplaySpeed, ...
+        10*log10(max(ThresholdCA(displayIdx, timeIdx), eps)), ...
+        'r', 'LineWidth', 1.2);
+    
+    plot(DisplaySpeed, ...
+        10*log10(max(ThresholdOS(displayIdx, timeIdx), eps)), ...
+        'k', 'LineWidth', 1.2);
+    
+    xlabel('Radial speed (m/s)');
+    ylabel('Whitened, averaged power / threshold (dB)');
+    title(sprintf('CFAR comparison at %.4f s', t(timeIdx)));
+    legend('Input power', 'CA threshold', 'OS threshold');
+    grid on;
     
      %% original spectrogram and speed-time plot
     SpectrogramBounds = [-50 0]; %intensity color bounds in dB
@@ -192,31 +293,31 @@ for i = 1:length(wavFile_CW_All)
     
     PlotSpeedvsTime(S,f,t,fc,wavFile_CW,maxSpeed,SpectrogramBounds);
 
-    %% choose which markers to display
-    [markerTimes,markerSpeeds] = selectDetectionMarkers( ...
-        DetectionCandidates,DisplaySpeed,t);
+    % %% choose which markers to display
+    % [markerTimes,markerSpeeds] = selectDetectionMarkers( ...
+    %     DetectionCandidates,DisplaySpeed,t);
 
-    %% speed-time plot with the detections
-    figure;
-    imagesc(t,DisplaySpeed,DisplayPowerDB,SpectrogramBounds);
-    axis xy;
-    hold on;
-
-    if ShowPowerGatedCandidates
-        [candidateRows,candidateCols] = find(DetectionCandidates);
-        plot(t(candidateCols),DisplaySpeed(candidateRows),'mx','MarkerSize',4);
-    end
-
-    plot(markerTimes,markerSpeeds, ...
-        'kx','MarkerSize',6,'LineWidth',1);
-
-    xlabel('Time (s)');
-    ylabel('Radial speed magnitude (m/s)');
-    title(sprintf('%s: column-wise CA-CFAR detections',wavFile_CW), ...
-          'Interpreter','none');
-    colorbarHandle = colorbar;
-    ylabel(colorbarHandle,'Normalised intensity (dB)');
-    colormap('jet');
+    % %% speed-time plot with the detections
+    % figure;
+    % imagesc(t,DisplaySpeed,DisplayPowerDB,SpectrogramBounds);
+    % axis xy;
+    % hold on;
+    % 
+    % if ShowPowerGatedCandidates
+    %     [candidateRows,candidateCols] = find(DetectionCandidates);
+    %     plot(t(candidateCols),DisplaySpeed(candidateRows),'mx','MarkerSize',4);
+    % end
+    % 
+    % plot(markerTimes,markerSpeeds, ...
+    %     'kx','MarkerSize',6,'LineWidth',1);
+    % 
+    % xlabel('Time (s)');
+    % ylabel('Radial speed magnitude (m/s)');
+    % title(sprintf('%s: column-wise CA-CFAR detections',wavFile_CW), ...
+    %       'Interpreter','none');
+    % colorbarHandle = colorbar;
+    % ylabel(colorbarHandle,'Normalised intensity (dB)');
+    % colormap('jet');
 
    
 
