@@ -1,6 +1,6 @@
 function [] = PlotSpeedvsTime(S,f,t,fc,wavFile,Maxspeed,bnds)
 
-% function [] = PlotSpeedvsTime(S,f,t,wavFile,fc,CPI,overLap)
+% function [] = PlotSpeedvsTime(S,f,t,fc,wavFile,Maxspeed,bnds)
 % 
 % Produces a Speed vs Time image of the
 % CW radar recording. 
@@ -9,7 +9,7 @@ function [] = PlotSpeedvsTime(S,f,t,fc,wavFile,Maxspeed,bnds)
 %     
 % 2026 University of Cape Town 
 
-% S_db = 20*log10(abs(S));
+
 c = 3e8; %speed of light (m/s)
 
 lambda = c/fc; %wavelength

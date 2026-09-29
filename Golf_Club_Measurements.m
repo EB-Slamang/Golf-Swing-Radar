@@ -25,6 +25,8 @@ wavFile_CW_All = {
     % fullfile('P002', 'session1', 'Driver_FullSwing4.wav')
     % fullfile('P002', 'session1', 'Driver_FullSwing5.wav')
     % fullfile('P002', 'session1', 'Driver_FullSwing6_stoponfollowthru.wav')
+    % fullfile('P002', 'session1', 'Driver_DownSwing2.wav')
+    
     
                     };
             
@@ -43,7 +45,7 @@ wavFile_CW_All = {
 %                   % '7Iron_Fullswing4.wav';
 %                   % '7Iron_Fullswing5.wav';
 %                   % '7Iron_Fullswing6_stoponfollowthru.wav';
-%                   % '7Iron_Fullswing6_stoponfollowthru.wav';
+%                   
 % 
 %                   % 'Driver_BackSwing1.wav';
 %                   % 'Driver_BackSwing2.wav';
@@ -84,36 +86,62 @@ fc = 24e9;             %radar centre frequency (Hz)
 c = 3e8;               %speed of light (m/s)
 lambda = c/fc;         %radar wavelength (m)
 
-CPI = 0.02;            %coherent processing interval (s)
+CPI = 0.01;            %coherent processing interval (s)
 overlapFrac = 0.95;    %overlap between spectrogram frames
 maxSpeed = 60;         %maximum speed shown on the plots (m/s)
 
 
-%% CA-CFAR parameters
-PFA = 1e-3;                 %desired probability of false alarm
-RefWindow = 32;             %total number of reference cells
-GuardCells = 30;            %keeps the wide club return out of the references
+%% CFAR parameters
+PFA = 1e-4;                 %desired probability of false alarm
+RefWindowCA = 36;             %total number of reference cells
+GuardCellsCA = 24;            %keeps the wide club return out of the references
+
+RefWindowOS = 48;             %total number of reference cells
+GuardCellsOS = 24;            %keeps the wide club return out of the references
+
 MinimumDetectionSpeed = 1.5; %m/s
 
 % Use more cells above the CUT because the upper side of the club return
 % normally has cleaner noise than the lower-speed side.
 UseAsymmetricCFAR = true;
-UseOSCFAR = true;
-AsymmetricMaxSpeed = 25;
-LowerRefCells = 2;
+UseOSCFAR =  true;
+AsymmetricMaxSpeed = 60;
+LowerRefCells = round(0.1*RefWindowOS);
 
-Rank = ceil(0.33 * RefWindow); % OS CFAR parameter for kth smallest detection i.e 24th smallest reference power with refWindow =32
+Rank = ceil(0.75* RefWindowOS); % OS CFAR parameter for kth smallest detection
 
 %% detection cleaning parameters
-MinimumDetectionPowerDB = -40;
+MinimumDetectionPowerDB = -35;
 
+
+ClusterGapBins = 2; % Split whenever at least one speed bin is missing
+
+% 0 gives the cluster centre and 1 gives its upper edge
+UpperEdgeWeight = 0.3; % Start at the power-weighted centre; 0.9 follows the upper edge
+
+%larger values pull the centroid towards the stronger bins
+PowerWeightExponent = 10;
+
+MarkerSpeedWidth = 4;   % m/s: one marker per occupied speed interval
 
 M = 3;                  % Minimum number of supporting time columns
 N = 5;                  % Number of time columns in the window; must be odd
 ToleranceBins = 2;      % Allowed speed-bin distance above/below the candidate
+
+%% Marker reduction inside DBSCAN clusters
+FrameStep = 6; % Every nth occupied column, plus each cluster's last column
+WithinClusterMode = 'upper_band'; % 'all_bands' Or 'upper_band' for the upper band per cluster
+
+%% Clustering parameters
+TimeRadius = 0.003;    % Neighbourhood time radius: 3 ms
+SpeedRadius = 2.0;     % Neighbourhood speed radius: 2 m/s
+MinPoints = 4;         % Minimum nearby detected cells for a core point
+
 %% plot settings
 SpectrogramBounds = [-50 0];
-ShowPowerGatedCandidates = true;
+ShowPowerGatedCandidates = true; % Toggle faint candidate overlays
+AllMarkerResults = cell(numel(wavFile_CW_All),2); % CA and OS marker tables
+
 %% process each recording
 for i = 1:length(wavFile_CW_All)
 
@@ -169,12 +197,12 @@ for i = 1:length(wavFile_CW_All)
 
     %% Apply CA-CFAR
     [DetectionMapCA, ThresholdCA] = CA_CFAR(PowerData, speed, ...
-    PFA, RefWindow, GuardCells, MinimumDetectionSpeed, maxSpeed, ...
+    PFA, RefWindowCA, GuardCellsCA, MinimumDetectionSpeed, maxSpeed, ...
     UseAsymmetricCFAR, AsymmetricMaxSpeed, LowerRefCells);
 
     %% Apply OS-CFAR
     [DetectionMapOS, ThresholdOS] = OS_CFAR(PowerData, speed, ...
-    PFA, RefWindow, GuardCells, MinimumDetectionSpeed, maxSpeed, ...
+    PFA, RefWindowOS, GuardCellsOS, MinimumDetectionSpeed, maxSpeed, ...
     UseAsymmetricCFAR, AsymmetricMaxSpeed, LowerRefCells, Rank);
 
 
@@ -186,6 +214,7 @@ for i = 1:length(wavFile_CW_All)
         DetectionMapRaw = DetectionMapCA;
         Threshold = ThresholdCA;
     end
+    
     %% keep the speed range used for the plots
     speedRegionMask = speed >= MinimumDetectionSpeed & speed <= maxSpeed;
 
@@ -203,146 +232,182 @@ for i = 1:length(wavFile_CW_All)
     normalisationPower = max(max(DisplayPower(:)),eps);
     DisplayPowerDB = 10*log10(DisplayPower/normalisationPower + eps);
 
-    %% Inspect a point in a missing section
-    CheckTime = 2.53;     % Change to match the current recording
-    CheckSpeed = 25;      % m/s; choose a point on the visible return
-    
-    [~, timeIdx] = min(abs(t - CheckTime));
-    [~, displayRow] = min(abs(DisplaySpeed - CheckSpeed));
-    
-    speedIdx = displayIdx(displayRow);
-    
-    cutPower = PowerData(speedIdx, timeIdx);
-    osThreshold = ThresholdOS(speedIdx, timeIdx);
-    
-    cfarMarginDB = 10*log10( ...
-        max(cutPower, eps) / max(osThreshold, eps));
-    
-    gateMarginDB = DisplayPowerDB(displayRow, timeIdx) ...
-        - MinimumDetectionPowerDB;
-    
-    fprintf('\nChecking t = %.4f s, speed = %.2f m/s\n', ...
-        t(timeIdx), DisplaySpeed(displayRow));
-    
-    fprintf('OS-CFAR margin: %.2f dB\n', cfarMarginDB);
-    fprintf('Power-gate margin: %.2f dB\n', gateMarginDB);
+  
     %% Apply the same power gate to both detectors
     PowerGate = DisplayPowerDB >= MinimumDetectionPowerDB;
     
     CandidatesCA = DetectionMapCA(displayIdx, :) & PowerGate;
     CandidatesOS = DetectionMapOS(displayIdx, :) & PowerGate;
+
+    %% Select detections to cluster
+    if UseOSCFAR
+        DetectionCandidates = CandidatesOS;
+       
+            detectorName = 'OS-CFAR';
+    else
+        DetectionCandidates = CandidatesCA;
+        detectorName = 'CA-CFAR';
+    end
+
+    %% Cluster detections
+    [DetectionClustered, ClusterMap] = ClusterDetections( ...
+        DetectionCandidates, DisplaySpeed, t, ...
+        TimeRadius, SpeedRadius, MinPoints);
     
-    %% Compare detection maps
+    fprintf('Candidates before clustering: %d\n', ...
+        nnz(DetectionCandidates));
+    
+    fprintf('Detections retained in clusters: %d\n', ...
+        nnz(DetectionClustered));
+    
+    fprintf('Number of clusters: %d\n', ...
+        max([0; ClusterMap(:)]));
+
+     %% Display clusters
     figure;
-    
-    subplot(2,1,1);
-    imagesc(t, DisplaySpeed, DisplayPowerDB, SpectrogramBounds);
-    axis xy;
     hold on;
-    
-    [rowsCA, colsCA] = find(CandidatesCA);
-    plot(t(colsCA), DisplaySpeed(rowsCA), 'kx', 'MarkerSize', 4);
-    
-    title([wavFile_CW ' — CA-CFAR'], 'Interpreter', 'none');
+
+    % Points DBSCAN could not assign to a cluster
+    [noiseRows, noiseCols] = find(ClusterMap == -1);
+
+    scatter(t(noiseCols), DisplaySpeed(noiseRows), ...
+        8, 'kx');
+
+    % Plot each cluster in its own colour
+    clusterIDs = unique(ClusterMap(ClusterMap > 0));
+    colours = lines(numel(clusterIDs));
+
+    for k = 1:numel(clusterIDs)
+
+        [rows, cols] = find(ClusterMap == clusterIDs(k));
+
+        scatter(t(cols), DisplaySpeed(rows), 12, colours(k,:), 'filled');
+    end
+
     xlabel('Time (s)');
     ylabel('Radial speed (m/s)');
-    colorbar;
+    title(sprintf('%s: %s clusters', wavFile_CW, detectorName),'Interpreter', 'none');
+
+    grid on;
+    axis tight;
     
-    subplot(2,1,2);
-    imagesc(t, DisplaySpeed, DisplayPowerDB, SpectrogramBounds);
-    axis xy;
-    hold on;
-    
-    [rowsOS, colsOS] = find(CandidatesOS);
-    plot(t(colsOS), DisplaySpeed(rowsOS), 'kx', 'MarkerSize', 4);
-    
-    title(sprintf('%s — OS-CFAR, rank %d/%d', ...
-        wavFile_CW, Rank, RefWindow), 'Interpreter', 'none');
-    xlabel('Time (s)');
-    ylabel('Radial speed (m/s)');
-    colorbar;
-    
+    %% Compare markers from independently clustered CA and OS detections
+    % Keep the selected detector's cluster plot above. Here, build both
+    % comparison panels independently 
+    candidateMaps = {CandidatesCA, CandidatesOS};
+    detectorNames = {'CA-CFAR', 'OS-CFAR'};
+
+
+    MarkerResults = cell(1,2); % {1} = CA, {2} = OS, current recording
+    ClusterMaps = cell(1,2);
+    figure;
+    comparisonAxes = gobjects(2,1);
+
+    for detectorIdx = 1:2
+        [~, currentClusterMap] = ClusterDetections( ...
+            candidateMaps{detectorIdx}, DisplaySpeed, t, ...
+            TimeRadius, SpeedRadius, MinPoints);
+
+        [markerTimes, markerSpeeds, markerClusterIDs, markerColumns] = ...
+            SelectClusterMarkers(currentClusterMap, DisplayPower, ...
+                DisplaySpeed, t, ClusterGapBins, FrameStep, ...
+                UpperEdgeWeight, PowerWeightExponent, WithinClusterMode, MarkerSpeedWidth);
+
+        ClusterMaps{detectorIdx} = currentClusterMap;
+        MarkerResults{detectorIdx} = table(markerTimes, markerSpeeds, ...
+            markerClusterIDs, markerColumns, 'VariableNames', ...
+            {'Time_s','Speed_mps','ClusterID','TimeColumn'});
+
+        comparisonAxes(detectorIdx) = subplot(2,1,detectorIdx);
+        imagesc(t, DisplaySpeed, DisplayPowerDB, SpectrogramBounds);
+        axis xy;
+        hold on;
+
+        % Candidate overlays are optional and faint to keep markers legible.
+        if ShowPowerGatedCandidates
+            [candidateRows, candidateCols] = find(candidateMaps{detectorIdx});
+            plot(t(candidateCols), DisplaySpeed(candidateRows), 'mx', 'MarkerSize', 2);
+        end
+
+        % Plot points only: a shared DBSCAN ID is not a fitted trajectory.
+        plot(markerTimes,markerSpeeds,'kx','MarkerSize',6,'LineWidth',1);
+
+        title(sprintf('%s: %s reduced markers', wavFile_CW, detectorNames{detectorIdx}), 'Interpreter', 'none');
+        xlabel('Time (s)');
+        ylabel('Radial speed (m/s)');
+        colorbar;
+
+        fprintf('%s: %d clustered cells -> %d markers\n', ...
+            detectorNames{detectorIdx}, nnz(currentClusterMap > 0), ...
+            numel(markerTimes));
+    end
+    linkaxes(comparisonAxes, 'xy');
     colormap('jet');
 
-    figure;
+    % Preserve each recording's marker tables if several files are selected.
+    AllMarkerResults{i,1} = MarkerResults{1};
+    AllMarkerResults{i,2} = MarkerResults{2};
+%% OS-CFAR clusters with reduced markers overlaid
 
-    plot(DisplaySpeed, ...
-        10*log10(max(PowerData(displayIdx, timeIdx), eps)), ...
-        'b', 'LineWidth', 1.2);
-    hold on;
-    
-    plot(DisplaySpeed, ...
-        10*log10(max(ThresholdCA(displayIdx, timeIdx), eps)), ...
-        'r', 'LineWidth', 1.2);
-    
-    plot(DisplaySpeed, ...
-        10*log10(max(ThresholdOS(displayIdx, timeIdx), eps)), ...
-        'k', 'LineWidth', 1.2);
-    
-    xlabel('Radial speed (m/s)');
-    ylabel('Whitened, averaged power / threshold (dB)');
-    title(sprintf('CFAR comparison at %.4f s', t(timeIdx)));
-    legend('Input power', 'CA threshold', 'OS threshold');
-    grid on;
-    
+% Reuse the OS results calculated above for this recording.
+osClusterMap = ClusterMap;
+osMarkers = AllMarkerResults{i,2};
+
+
+figure;
+hold on;
+
+% Noise: small grey dots.
+[noiseRows, noiseCols] = find(osClusterMap == -1);
+
+noiseHandle = scatter( ...
+    t(noiseCols), DisplaySpeed(noiseRows), ...
+    10, [0.6 0.6 0.6], 'x', ...
+    'DisplayName', 'DBSCAN noise');
+% Get each cluster ID once.
+clusterIDs = unique(osClusterMap(osClusterMap > 0));
+colours = lines(numel(clusterIDs));
+
+% Plot each cluster once.
+for k = 1:numel(clusterIDs)
+
+    [rows, cols] = find(osClusterMap == clusterIDs(k));
+
+    scatter(t(cols), DisplaySpeed(rows), ...
+        12, colours(k,:), 'filled', ...
+        'MarkerFaceAlpha', 0.25, ...
+        'HandleVisibility', 'off');
+end
+
+
+markerHandle = plot(osMarkers.Time_s, osMarkers.Speed_mps, ...
+    'kx', 'LineStyle', 'none', ...
+    'MarkerSize', 6, 'LineWidth', 1.2);
+
+xlabel('Time (s)');
+ylabel('Radial speed (m/s)');
+
+title(sprintf('%s: OS-CFAR clusters and reduced markers', ...
+    wavFile_CW), 'Interpreter', 'none');
+
+legend([noiseHandle, markerHandle], ...
+    {'DBSCAN noise', 'Reduced OS-CFAR markers'}, ...
+    'Location', 'best');
+
+grid on;
+axis tight;
+
+fprintf('OS-CFAR overlay: %d clustered cells -> %d reduced markers\n', ...
+    nnz(osClusterMap > 0), height(osMarkers));
      %% original spectrogram and speed-time plot
     SpectrogramBounds = [-50 0]; %intensity color bounds in dB
     
     % PlotSpectrogram(S,f,t,wavFile_CW,SpectrogramBounds);
 
     
-    PlotSpeedvsTime(S,f,t,fc,wavFile_CW,maxSpeed,SpectrogramBounds);
+    % PlotSpeedvsTime(S,f,t,fc,wavFile_CW,maxSpeed,SpectrogramBounds);
 
-    % %% choose which markers to display
-    % [markerTimes,markerSpeeds] = selectDetectionMarkers( ...
-    %     DetectionCandidates,DisplaySpeed,t);
-
-    % %% speed-time plot with the detections
-    % figure;
-    % imagesc(t,DisplaySpeed,DisplayPowerDB,SpectrogramBounds);
-    % axis xy;
-    % hold on;
-    % 
-    % if ShowPowerGatedCandidates
-    %     [candidateRows,candidateCols] = find(DetectionCandidates);
-    %     plot(t(candidateCols),DisplaySpeed(candidateRows),'mx','MarkerSize',4);
-    % end
-    % 
-    % plot(markerTimes,markerSpeeds, ...
-    %     'kx','MarkerSize',6,'LineWidth',1);
-    % 
-    % xlabel('Time (s)');
-    % ylabel('Radial speed magnitude (m/s)');
-    % title(sprintf('%s: column-wise CA-CFAR detections',wavFile_CW), ...
-    %       'Interpreter','none');
-    % colorbarHandle = colorbar;
-    % ylabel(colorbarHandle,'Normalised intensity (dB)');
-    % colormap('jet');
-
-   
-
+ 
 end 
 
 
-%%functions
-
-function [markerTimes,markerSpeeds] = selectDetectionMarkers( ...
-    detectionMap,displaySpeed, timeVector)
-
-    [~,nTimeBins] = size(detectionMap);
-    markerTimes = [];
-    markerSpeeds = [];
-
-    for timeIdx = 1:nTimeBins
-        detectedRows = find(detectionMap(:,timeIdx));
-
-        if isempty(detectedRows)
-            continue;
-        end
-
-        selectedSpeeds = displaySpeed(detectedRows);
-        
-        markerTimes = [markerTimes; repmat(timeVector(timeIdx),numel(selectedSpeeds),1)];
-        markerSpeeds = [markerSpeeds; selectedSpeeds(:)];
-    end
-end
