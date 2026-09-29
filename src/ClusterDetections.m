@@ -1,3 +1,6 @@
+%Ebrahiem Slamang
+%EEE4022S
+
 function [DetectionClustered, ClusterMap] = ClusterDetections( ...
     DetectionMap, speed, t, TimeRadius, SpeedRadius, MinPoints)
 % Group detections in speed-time space using DBSCAN.
@@ -28,9 +31,11 @@ function [DetectionClustered, ClusterMap] = ClusterDetections( ...
     % Scale the two axes separately to define an elliptical neighbourhood.
     points = [(pointTimes - t(1)) / TimeRadius, pointSpeeds / SpeedRadius];
 
+    % Too few detections cannot form a DBSCAN core point.
     if numel(rows) < MinPoints
         labels = -ones(numel(rows), 1);
     else
+        % Unit radius in scaled coordinates gives the requested ellipse.
         labels = dbscan(points, 1, MinPoints, 'Distance', 'euclidean');
     end
 

@@ -4,39 +4,44 @@
 function [DetectionMap, Threshold] = OS_CFAR(PowerData, speed, ...
     PFA, RefWindow, GuardCells, MinimumDetectionSpeed, maxSpeed, ...
     UseAsymmetricCFAR, AsymmetricMaxSpeed, LowerRefCells, Rank)
-% OS-CFAR using circular reference indexing along the speed rows.
-% PowerData must contain finite, nonnegative LINEAR power, not dB.
-% RefWindow is the TOTAL reference count; GuardCells is the count PER SIDE.
-% Speed limits select CUTs only. References wrap across ALL PowerData rows.
-% The theoretical PFA assumes independent exponential noise powers.
+    % Apply OS-CFAR to each time column using linear power, not dB.
+    % CUT = cell under test; RefWindow is the total reference count.
+    % GuardCells is the number of excluded cells on EACH side of the CUT.
+    % Rank selects the kth smallest reference power, starting at 1.
+    % References stay within the selected speed range; they do not wrap.
+    % Threshold is NaN where a CUT is outside the range or cannot be tested.
 
     [nSpeedBins, nTimeBins] = size(PowerData);
     speed = speed(:);
 
 
 
-    % Keep reference cells, guards and CUT within array range
+     % Check the full array can fit the nominal reference and guard window.
     assert(RefWindow + 2*GuardCells + 1 <= nSpeedBins, ...
         'PowerData needs at least RefWindow + 2*GuardCells + 1 speed rows.');
 
     DetectionMap = false(nSpeedBins, nTimeBins);
+    % Untested cells remain false, with no threshold value.
     Threshold = nan(nSpeedBins, nTimeBins);
 
 
     % PFA = product((RefWindow-i)/(RefWindow-i+alpha)), i = 0:Rank-1.
-    % Solve in log form once
+    % Use a sum of logs to avoid multiplying many small fractions.
+    % Solved in log form
     i = 0:(Rank - 1);
 
-    thresholdEquation = @(a) ...
-        sum(log((RefWindow - i) ./ (RefWindow - i + a))) - log(PFA);
-
+    thresholdEquation = @(a) sum(log((RefWindow - i) ./ (RefWindow - i + a))) - log(PFA);
+    
+    % Double the upper bound until the root is bracketed for fzero.
     upperBound = 1;
     while thresholdEquation(upperBound) > 0
         upperBound = 2*upperBound;
     end
-
+    
+    % Solve for the threshold multiplier once, before processing the CUTs.
     alpha = fzero(thresholdEquation, [0 upperBound]);
 
+    % Both CUTs and reference cells are restricted to this speed range.
     speedIdxs = find(speed >= MinimumDetectionSpeed & speed <= maxSpeed);
 
     nSelectedBins = numel(speedIdxs);
@@ -57,7 +62,8 @@ function [DetectionMap, Threshold] = OS_CFAR(PowerData, speed, ...
 
      availableLower = max(0,  speedIdx - speedIdxs(1) - GuardCells);
      availableUpper = max(0, speedIdxs(end) - speedIdx - GuardCells);
-
+        
+     % Move missing reference cells to the opposite side near speed limits.
      %if # num of available bins in lower or upper ref cells is 
      % < assigned ref cells, adjust ref cells to above/below CUT 
 
@@ -69,16 +75,12 @@ function [DetectionMap, Threshold] = OS_CFAR(PowerData, speed, ...
         nLower = nLower + (nUpper - availableUpper);
         nUpper = availableUpper;
      end
+     % Skip this CUT if both sides together cannot provide enough cells.
      if nLower > availableLower || nUpper > availableUpper
         continue;
      end
 
-
-    % % Reference positions relative to the selected speed range.
-    % lowerLocal = (localIdx - GuardCells - nLower): (localIdx - GuardCells - 1);
-    % 
-    % upperLocal = (localIdx + GuardCells + 1): (localIdx + GuardCells + nUpper);
-
+     % Leave guard cells out of the noise estimate.
     if nLower == 0
 
         upperIdx = (speedIdx + GuardCells + 1):(speedIdx + GuardCells + nUpper);
@@ -94,26 +96,14 @@ function [DetectionMap, Threshold] = OS_CFAR(PowerData, speed, ...
     end
 
 
+    % Pool both sides, then sort each time column independently.
+    sortedReferenceCells = sort(referenceCells, 1, 'ascend');
+    % Take the kth smallest power independently in each time frame.
+    referenceLevel = sortedReferenceCells(Rank, :);
+    Threshold(speedIdx, :) = alpha * referenceLevel;
 
-    % Wrap within the selected range only.
-    % lowerLocal = mod(lowerLocal - 1, nSelectedBins) + 1;
-    % upperLocal = mod(upperLocal - 1, nSelectedBins) + 1;
-
-    % Convert wrapped positions back into original PowerData row indices.
-    % lowerIdx = speedIdxs(lowerLocal);
-    % upperIdx = speedIdxs(upperLocal);
-
-     % Pool both sides, then sort each time column independently.
-     % referenceCells = PowerData([lowerIdx(:); upperIdx(:)], :);
-     sortedReferenceCells = sort(referenceCells, 1, 'ascend');
-     referenceLevel = sortedReferenceCells(Rank, :);
-     Threshold(speedIdx, :) = alpha * referenceLevel;
-
-
-
+     % Compare this speed row against its threshold in every time frame.
     DetectionMap(speedIdx, :) = PowerData(speedIdx, :) >= Threshold(speedIdx, :);
-
-
 
     end
 
@@ -121,69 +111,3 @@ function [DetectionMap, Threshold] = OS_CFAR(PowerData, speed, ...
 end
 
 
-% function [DetectionMap, Threshold] = OS_CFAR(PowerData, speed, ...
-%     PFA, RefWindow, GuardCells, MinimumDetectionSpeed, maxSpeed, ...
-%     UseAsymmetricCFAR, AsymmetricMaxSpeed, LowerRefCells, Rank)
-% % OS-CFAR using circular reference indexing along the speed rows.
-% % PowerData must contain finite, nonnegative LINEAR power, not dB.
-% % RefWindow is the TOTAL reference count; GuardCells is the count PER SIDE.
-% % Speed limits select CUTs only. References wrap across ALL PowerData rows.
-% % The theoretical PFA assumes independent exponential noise powers.
-% 
-%     [nSpeedBins, nTimeBins] = size(PowerData);
-%     speed = speed(:);
-% 
-% 
-%     % Keep reference cells, guards and CUT distinct after circular wrapping.
-%     assert(RefWindow + 2*GuardCells + 1 <= nSpeedBins, ...
-%         'PowerData needs at least RefWindow + 2*GuardCells + 1 speed rows.');
-% 
-%     DetectionMap = false(nSpeedBins, nTimeBins);
-%     Threshold = nan(nSpeedBins, nTimeBins);
-% 
-% 
-%     % PFA = product((RefWindow-i)/(RefWindow-i+alpha)), i = 0:Rank-1.
-%     % Solve in log form 
-% 
-%     i = 0:(Rank - 1);
-% 
-%     thresholdEquation = @(a) ...
-%         sum(log((RefWindow - i) ./ (RefWindow - i + a))) - log(PFA);
-% 
-%     upperBound = 1;
-%     while thresholdEquation(upperBound) > 0
-%         upperBound = 2*upperBound;
-%     end
-% 
-%     alpha = fzero(thresholdEquation, [0 upperBound]);
-% 
-%     speedIdxs = find(speed >= MinimumDetectionSpeed & speed <= maxSpeed);
-% 
-%     for speedIdx = speedIdxs(:).'
-%         if UseAsymmetricCFAR && speed(speedIdx) <= AsymmetricMaxSpeed
-%             nLower = LowerRefCells;
-%             nUpper = RefWindow - nLower;
-%         else
-%             nLower = RefWindow/2;
-%             nUpper = RefWindow/2;
-%         end
-% 
-%         % Indices before wrapping (may lie outside 1:nSpeedBins).
-%         lowerIdx = (speedIdx - GuardCells - nLower): (speedIdx - GuardCells - 1);
-%         upperIdx = (speedIdx + GuardCells + 1): (speedIdx + GuardCells + nUpper);
-% 
-%         % Wrap around the full speed axis, separately within each time column.
-%         % A side with zero reference cells remains an empty index vector.
-%         lowerIdx = mod(lowerIdx - 1, nSpeedBins) + 1;
-%         upperIdx = mod(upperIdx - 1, nSpeedBins) + 1;
-% 
-%         % Pool both sides, then sort each time column independently.
-%         referenceCells = PowerData([lowerIdx upperIdx], :);
-%         sortedReferenceCells = sort(referenceCells, 1, 'ascend');
-%         referenceLevel = sortedReferenceCells(Rank, :);
-%         Threshold(speedIdx, :) = alpha * referenceLevel;
-% 
-%         DetectionMap(speedIdx, :) = ...
-%             PowerData(speedIdx, :) >= Threshold(speedIdx, :);
-%     end
-% end
