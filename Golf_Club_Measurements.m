@@ -34,8 +34,8 @@ wavFile_CW_All = {
     fullfile('P002', 'session1', 'Driver_FullSwing2.wav')
     fullfile('P002', 'session1', 'Driver_FullSwing3.wav')
     fullfile('P002', 'session1', 'Driver_FullSwing4.wav')
-    % fullfile('P002', 'session1', 'Driver_FullSwing5.wav')
-    % fullfile('P002', 'session1', 'Driver_FullSwing6_stoponfollowthru.wav')
+    fullfile('P002', 'session1', 'Driver_FullSwing5.wav')
+    fullfile('P002', 'session1', 'Driver_FullSwing6_stoponfollowthru.wav')
     % 
     % fullfile('P002', 'session1', 'Driver_BackSwing1.wav')
     % fullfile('P002', 'session1', 'Driver_BackSwing2.wav')
@@ -51,9 +51,9 @@ wavFile_CW_All = {
     % fullfile('P002', 'session1', '7Iron_DownSwing2.wav')
     % fullfile('P002', 'session1', '7Iron_DownSwing3.wav')
     % 
-    % fullfile('P002', 'session1', '7Iron_Fullswing1_Slow.wav')
-    % fullfile('P002', 'session1', '7Iron_Fullswing2.wav')
-    % fullfile('P002', 'session1', '7Iron_Fullswing3.wav')
+    fullfile('P002', 'session1', '7Iron_Fullswing1_Slow.wav')
+    fullfile('P002', 'session1', '7Iron_Fullswing2.wav')
+    fullfile('P002', 'session1', '7Iron_Fullswing3.wav')
     % fullfile('P002', 'session1', '7Iron_Fullswing4.wav')
     % fullfile('P002', 'session1', '7Iron_Fullswing5.wav')
     % fullfile('P002', 'session1', '7Iron_Fullswing6_stoponfollowthru.wav')
@@ -64,9 +64,9 @@ wavFile_CW_All = {
     % fullfile('P002', 'session1', 'Wedge_DownSwing1.wav')
     % fullfile('P002', 'session1', 'Wedge_DownSwing2.wav')
     % 
-    % fullfile('P002', 'session1', 'Wedge_FullSwing1.wav')
-    % fullfile('P002', 'session1', 'Wedge_FullSwing2.wav')
-    % fullfile('P002', 'session1', 'Wedge_FullSwing3.wav')
+    fullfile('P002', 'session1', 'Wedge_FullSwing1.wav')
+    fullfile('P002', 'session1', 'Wedge_FullSwing2.wav')
+    fullfile('P002', 'session1', 'Wedge_FullSwing3.wav')
     % fullfile('P002', 'session1', 'Wedge_FullSwing4.wav')
     % fullfile('P002', 'session1', 'Wedge_FullSwing5.wav')
     % 
@@ -100,7 +100,7 @@ GuardCellsCA = 24;            %CA-CFAR guard cells on each side
 RefWindowOS = 60;             %OS-CFAR total number of reference cells
 GuardCellsOS = 20;            %OS-CFAR guard cells on each side
 
-MinimumDetectionSpeed = 1.5;  % lower speed limit for CFAR and detection plots (m/s) 
+MinimumDetectionSpeed = 1;  % lower speed limit for CFAR and detection plots (m/s) 
 
 % Use more cells above the CUT because the upper side of the club return
 % normally has cleaner noise than the lower-speed side and less likely to self-mask.
@@ -135,29 +135,34 @@ FrameStep = 6; % Every nth occupied column, plus each cluster's last column
 WithinClusterMode = 'upper_band'; % 'all_bands' Or 'upper_band' for the upper band per cluster
 
 %% DBSCAN Clustering parameters
-TimeRadius = 0.002;    % Neighbourhood time radius: 3 ms
+TimeRadius = 0.002;    % Neighbourhood time radius: 2 ms
 SpeedRadius = 2.0;     % Neighbourhood speed radius: 2 m/s
 MinPoints = 4;         % Minimum nearby detected cells for a core point
 
-%% Marker Swing Phase Detection Parameters
+%% Swing detection parameters (all tuning is done here)
+SwingParameters.MotionThreshold_mps = 1;
+SwingParameters.MinimumMotionDuration_s = 0.03;
+SwingParameters.BackswingSearchWindow_s = 1.5;
+SwingParameters.BackswingStartMode = 'first'; % 'first' or previous 'linked' rule
+SwingParameters.MaximumMotionGap_s = 0.05;   % Only used in 'linked' mode
 
-MotionThreshold_mps = 2;
-TopThreshold_mps = 4.0;
+SwingParameters.TopThreshold_mps = 6;
+SwingParameters.MinimumTopDuration_s = 0.05;
+SwingParameters.TopSearchWindow_s = 1.5;
+SwingParameters.TopMethod = 'minimum';       % 'minimum' or 'rise'; both are returned
 
-MinimumMotionDuration_s = 0.03;
-MinimumTopDuration_s = 0.05;
-MaximumMotionGap_s = 0.05; % Allow a short gap between backswing arcs
+SwingParameters.MaxInterpolationGap_s = 0.1; % Fill only internal gaps <= 30 ms
+SwingParameters.MaxTopGap_s = 0.5;           % Group unknown gaps bounded by low speeds
+SwingParameters.MedianFilterFrames = 3;
+SwingParameters.MovingAverageFrames = 3;     %3
+SwingParameters.PeakSearchHalfWidth_s = 0.04;
 
-TopSearchWindow_s = 1.5;
-
-MedianFilterFrames = 3;
-MovingAverageFrames = 3;
-
-PeakSearchHalfWidth_s = 0.04;
-
-DownswingThreshold_mps = 4.0;       % Speed required to accept downswing motion
-MinimumDownswingDuration_s = 0.03; % Require 30 ms of sustained motion
-
+% Alternative top rule: sustained rise beginning within the low-speed region.
+SwingParameters.RiseWindow_s = 0.06;
+SwingParameters.MinimumRise_mps = 1.5;
+SwingParameters.MinimumRisingFraction = 0.70;
+SwingParameters.RiseDropTolerance_mps = 0.10;
+SwingParameters.MinimumMeasuredFraction = 0.50;
 
 %% plot settings
 SpectrogramBounds = [-50 0];
@@ -165,6 +170,7 @@ ShowPowerGatedCandidates = true; % Toggle faint candidate overlays
 AllMarkerResults = cell(numel(wavFile_CW_All),2); % CA and OS marker tables
 
 AllSwingMetrics = table; % Reset results whenever the full script is run
+AllSwingTraces = cell(numel(wavFile_CW_All),1);
 
 %% process each recording
 for i = 1:length(wavFile_CW_All)
@@ -290,31 +296,31 @@ for i = 1:length(wavFile_CW_All)
     fprintf('Number of clusters: %d\n', max([0; ClusterMap(:)]));
 
      %% Display clusters
-    % figure;
-    % hold on;
-    % 
-    % % Points DBSCAN could not assign to a cluster
-    % [noiseRows, noiseCols] = find(ClusterMap == -1);
-    % 
-    % scatter(t(noiseCols), DisplaySpeed(noiseRows),8, 'kx');
-    % 
-    % % Plot each cluster in its own colour
-    % clusterIDs = unique(ClusterMap(ClusterMap > 0));
-    % colours = lines(numel(clusterIDs));
-    % 
-    % for k = 1:numel(clusterIDs)
-    % 
-    %     [rows, cols] = find(ClusterMap == clusterIDs(k));
-    % 
-    %     scatter(t(cols), DisplaySpeed(rows), 12, colours(k,:), 'filled');
-    % end
-    % 
-    % xlabel('Time (s)');
-    % ylabel('Radial speed (m/s)');
-    % title(sprintf('%s: %s clusters', wavFile_CW, detectorName),'Interpreter', 'none');
-    % 
-    % grid on;
-    % axis tight;
+    figure;
+    hold on;
+
+    % Points DBSCAN could not assign to a cluster
+    [noiseRows, noiseCols] = find(ClusterMap == -1);
+
+    scatter(t(noiseCols), DisplaySpeed(noiseRows),8, 'kx');
+
+    % Plot each cluster in its own colour
+    clusterIDs = unique(ClusterMap(ClusterMap > 0));
+    colours = lines(numel(clusterIDs));
+
+    for k = 1:numel(clusterIDs)
+
+        [rows, cols] = find(ClusterMap == clusterIDs(k));
+
+        scatter(t(cols), DisplaySpeed(rows), 12, colours(k,:), 'filled');
+    end
+
+    xlabel('Time (s)');
+    ylabel('Radial speed (m/s)');
+    title(sprintf('%s: %s clusters', wavFile_CW, detectorName),'Interpreter', 'none');
+
+    grid on;
+    axis tight;
     
     %% Compare markers from independently clustered CA and OS detections
     
@@ -442,382 +448,24 @@ for i = 1:length(wavFile_CW_All)
 % title('OS-CFAR reduced markers');
 % grid on;
 
-%% Swing detection
-
-    ClubSpeedEnvelope = nan(1,length(t));
-   
-
-    for timeIndex = 1:length(t)
-
-        detectedRows = find(osClusterMap(:,timeIndex) > 0);
-
-        if ~isempty(detectedRows)
-
-            ClubSpeedEnvelope(timeIndex) =  max(DisplaySpeed(detectedRows));
-           
-
-        end
-
-    end
-
-    % figure;
-    % 
-    % imagesc(t,DisplaySpeed,DisplayPowerDB,SpectrogramBounds);
-    % axis xy;
-    % hold on;
-    % 
-    % plot(t,ClubSpeedEnvelope,'k.', 'MarkerSize',8, 'DisplayName','Raw envelope');
-    % 
-    % xlabel('Time (s)');
-    % ylabel('Radial speed (m/s)');
-    % title('Raw club-speed envelope');
-    %  legend('Location','best');
-    % colorbar;
-    % colormap('jet');
-
-
-
-    FrameTime_s = median(diff(t));
-
-    MedianFilterDuration_s =  MedianFilterFrames * FrameTime_s;
-
-    MovingAverageDuration_s = MovingAverageFrames * FrameTime_s;
-    ClubSpeedMedian = movmedian(ClubSpeedEnvelope, MedianFilterFrames, 'omitnan');
-
-    ClubSpeedSmoothed = movmean( ClubSpeedMedian, MovingAverageFrames, 'omitnan');
-
-    % figure;
-    % hold on;
-    % 
-    % plot(t,ClubSpeedEnvelope,'.', 'DisplayName','Raw envelope');
-    % 
-    % plot(t,ClubSpeedMedian,'--', 'LineWidth',1.2, 'DisplayName','Median filtered');
-    % 
-    % plot(t,ClubSpeedSmoothed,'-', 'LineWidth',1.5, 'DisplayName','Smoothed');
-    % 
-    % xlabel('Time (s)');
-    % ylabel('Radial speed (m/s)');
-    % title('Effect of filtering on club-speed envelope');
-    % legend('Location','best');
-    % grid on;
-
-    [~,PeakSpeedIndex] =  max(ClubSpeedSmoothed,[],'omitnan');
-
-    PeakSpeedTime_s = t(PeakSpeedIndex);
-
-    PeakSearchHalfWidth_s = 0.04;
-
-    PeakSearchStart_s =  PeakSpeedTime_s - PeakSearchHalfWidth_s;
-
-    PeakSearchEnd_s = PeakSpeedTime_s + PeakSearchHalfWidth_s;
-
-    PeakSearchMask =  t >= PeakSearchStart_s &  t <= PeakSearchEnd_s;
-
-    PeakRadialSpeed_mps =  max(ClubSpeedEnvelope(PeakSearchMask),[], 'omitnan');
-
-    figure;
-    hold on;
-
-    plot(t,ClubSpeedEnvelope,'.', 'DisplayName','Raw envelope');
-
-    plot(t,ClubSpeedSmoothed,'-', 'LineWidth',1.5, 'DisplayName','Smoothed envelope');
-
-    xline(PeakSearchStart_s,'--','Search start');
-    xline(PeakSpeedTime_s,'-','Detected peak time');
-    xline(PeakSearchEnd_s,'--','Search end');
-
-    plot(PeakSpeedTime_s, ClubSpeedSmoothed(PeakSpeedIndex), 'o','MarkerSize',8);
-
-    xlabel('Time (s)');
-    ylabel('Radial speed (m/s)');
-
-    title(sprintf('Peak radial speed = %.2f m/s', PeakRadialSpeed_mps));
-    legend('Location','best');
-    grid on;
-
-
-
-
-    % Step 5: top of the backswing
-    TopSearchWindow_s = 1.5;
-
-    TopSearchStart_s =  PeakSpeedTime_s - TopSearchWindow_s;
-
-    TopSearchMask =  t >= TopSearchStart_s &  t < PeakSpeedTime_s;
-
-    TopCandidateMask = ClubSpeedSmoothed <= TopThreshold_mps;
-
-    TopOfBackswingIndex = NaN;
-    TopOfBackswingTime_s = NaN;
-
-    % NaN means the CFAR/DBSCAN found nothing, and NaN <= 4 is false, so by default
-    % those frames are NOT counted as slow. If the top of the backswing is a gap in
-    % the envelope (club too slow to be detected), set this to true and re-check the plot.
-    TreatNaNAsLowSpeed = true;
-    if TreatNaNAsLowSpeed
-        TopCandidateMask = TopCandidateMask | isnan(ClubSpeedSmoothed);
-    end
-
-
-
-    MinimumTopFrames = ceil( MinimumTopDuration_s / FrameTime_s);
-
-    % % Which point of the slow region counts as "the top": 'start', 'middle' or 'end'
-    TopEventMode = 'end';
-
-    % only keep frames that are slow AND inside the backwards search window
-    TopValidMask = TopCandidateMask & TopSearchMask;
-
-    % find where each run of consecutive slow frames starts and ends
-    % (padding with false so runs touching the edges are still picked up)
-    paddedMask = [false, TopValidMask, false];
-    TopRunStarts = find(diff(paddedMask) == 1);
-    TopRunEnds   = find(diff(paddedMask) == -1) - 1;
-    TopRunLengths = TopRunEnds - TopRunStarts + 1;
-
-    % throw away runs that are shorter than MinimumTopFrames (brief dips)
-    keepRuns = TopRunLengths >= MinimumTopFrames;
-    TopRunStarts = TopRunStarts(keepRuns);
-    TopRunEnds   = TopRunEnds(keepRuns);
-
-    if isempty(TopRunStarts)
-        % nothing sustained in the window, so leave the event as NaN and warn
-        
-        TopRunStart = NaN;
-        TopRunEnd = NaN;
-        warning(['No sustained low-speed region found before the peak. ' ...
-            'Try a higher TopThreshold_mps, a shorter MinimumTopDuration_s, ' ...
-            'a longer TopSearchWindow_s or TreatNaNAsLowSpeed = true.']);
-    else
-        % the last run is the one closest to the peak, i.e. the most recent
-        % sustained slow region before the downswing
-        TopRunStart = TopRunStarts(end);
-        TopRunEnd   = TopRunEnds(end);
-
-        switch TopEventMode
-            case 'start'
-                TopOfBackswingIndex = TopRunStart;
-            case 'end'
-                TopOfBackswingIndex = TopRunEnd;
-            otherwise % 'middle'
-                TopOfBackswingIndex = round((TopRunStart + TopRunEnd)/2);
-        end
-        TopOfBackswingTime_s = t(TopOfBackswingIndex);
-    end
-
-    % figure;
-    % hold on;
-    % 
-    % plot(t,ClubSpeedSmoothed,'LineWidth',1.5,'DisplayName','Smoothed envelope');
-    % yline(TopThreshold_mps,'--','Top threshold');
-    % xline(TopSearchStart_s,'--','Search start');
-    % xline(PeakSpeedTime_s,'--','Peak speed');
-    % 
-    % % only draw the detected top if one was actually found
-    % if ~isnan(TopOfBackswingIndex)
-    %     % highlight the slow region that got picked
-    %     plot(t(TopRunStart:TopRunEnd), ClubSpeedSmoothed(TopRunStart:TopRunEnd), ...
-    %         'r.', 'MarkerSize',12, 'DisplayName','Selected low-speed region');
-    %     xline(TopOfBackswingTime_s,'-','Detected top');
-    % end
-    % 
-    % xlabel('Time (s)');
-    % ylabel('Radial speed (m/s)');
-    % title('Top-of-backswing detection');
-    % legend('Location','best');
-    % grid on;
-
-    fprintf('Top of backswing: %.3f s (%.3f s before peak speed)\n', ...
-        TopOfBackswingTime_s, PeakSpeedTime_s - TopOfBackswingTime_s);
-
-    % Step 6
-
-    BackswingStartIndex = NaN;
-    BackswingStartTime_s = NaN;
-
-    MinimumMotionFrames = ceil(MinimumMotionDuration_s / FrameTime_s);
-
-    if ~isnan(TopOfBackswingIndex)
-        % Search only before the detected top. NaNs do not count as motion.
-        MotionMask = ClubSpeedSmoothed >= MotionThreshold_mps & t < t(TopRunStart);
-
-        % +1 marks the start of a motion run; -1 marks the frame after its end.
-        MotionTransitions = diff([false MotionMask false]);
-        MotionRunStarts = find(MotionTransitions == 1);
-        MotionRunEnds = find(MotionTransitions == -1) - 1;
-
-        % Keep runs that stay above the threshold for long enough.
-        MotionRunLengths = MotionRunEnds - MotionRunStarts + 1;
-        ValidRuns = find(MotionRunLengths >= MinimumMotionFrames);
-
-        if ~isempty(ValidRuns)
-
-            % Start with the last sustained motion run before the top.
-            selectedRun = ValidRuns(end);
-
-            % Include earlier sustained runs if the separating gap is short.
-            for k = length(ValidRuns)-1:-1:1
-
-                previousRun = ValidRuns(k);
-
-                gap_s = t(MotionRunStarts(selectedRun)) - ...
-                        t(MotionRunEnds(previousRun));
-
-                if gap_s > MaximumMotionGap_s
-                    break; % A longer gap separates this from earlier movement.
-                end
-
-                selectedRun = previousRun;
-            end
-
-            BackswingStartIndex = MotionRunStarts(selectedRun);
-            BackswingStartTime_s = t(BackswingStartIndex);
-
-        else
-            warning('No sustained backswing motion found for %s.', wavFile_CW);
-        end
-    end
-
-    % figure;
-    % plot(t,ClubSpeedSmoothed,'LineWidth',1.5);
-    % hold on;
-    % yline(MotionThreshold_mps,'--','Motion threshold');
-    % if ~isnan(BackswingStartTime_s)
-    %     xline(BackswingStartTime_s,'-','Detected backswing start');
-    % end
-    % if ~isnan(TopOfBackswingTime_s)
-    %     xline(TopOfBackswingTime_s,'--','Top of backswing');
-    % end
-    % xlabel('Time (s)');
-    % ylabel('Radial speed (m/s)');
-    % title('Backswing-start detection');
-    % grid on;
-
-    %% Detect the start of the downswing
-    % DownswingStartIndex = NaN;
-    % DownswingStartTime_s = NaN;
-    % 
-    % MinimumDownswingFrames = ceil( ...
-    %     MinimumDownswingDuration_s / FrameTime_s);
-    % 
-    % if ~isnan(TopOfBackswingIndex)
-    % 
-    %     % Search after the selected slow region and before peak speed.
-    %     DownswingMask = ClubSpeedSmoothed >= DownswingThreshold_mps & ...
-    %                     t > t(TopRunEnd) & t < PeakSpeedTime_s;
-    % 
-    %     % Find the start and end of each continuous motion run.
-    %     transitions = diff([false DownswingMask false]);
-    %     runStarts = find(transitions == 1);
-    %     runEnds = find(transitions == -1) - 1;
-    % 
-    %     % Select the first run that lasts long enough.
-    %     runLengths = runEnds - runStarts + 1;
-    %     firstValidRun = find( ...
-    %         runLengths >= MinimumDownswingFrames, 1, 'first');
-    % 
-    %     if ~isempty(firstValidRun)
-    %         DownswingStartIndex = runStarts(firstValidRun);
-    %         DownswingStartTime_s = t(DownswingStartIndex);
-    %     else
-    %         warning('No sustained downswing onset found for %s.', wavFile_CW);
-    %     end
-    % end
-
-%% Check the detected onset
-    % figure;
-    % plot(t,ClubSpeedSmoothed,'LineWidth',1.5);
-    % hold on;
-    % 
-    % yline(DownswingThreshold_mps,'--','Downswing threshold');
-    % 
-    % if ~isnan(TopOfBackswingTime_s)
-    %     xline(TopOfBackswingTime_s,'--','Top candidate');
-    % end
-    % 
-    % if ~isnan(DownswingStartTime_s)
-    %     xline(DownswingStartTime_s,'-','Downswing start');
-    % end
-    % 
-    % if ~isnan(PeakSpeedTime_s)
-    %     xline(PeakSpeedTime_s,'--','Peak radial speed');
-    % end
-    % 
-    % xlabel('Time (s)');
-    % ylabel('Radial speed (m/s)');
-    % title('Downswing-start detection');
-    % grid on;
-
-      %% Step 7: timing metrics
-    BackswingDuration_s = TopOfBackswingTime_s - BackswingStartTime_s;
-
-
-    % Still uses peak radial speed as the endpoint.
-    DownswingDuration_s = PeakSpeedTime_s - TopOfBackswingTime_s;
-
-
-    TempoRatio = BackswingDuration_s / DownswingDuration_s;
-
-    %% Step 8: retain one result row per processed recording
-    % Flag tops whose selected low-speed region contains missing measurements.
-    TopUsesMissingData = false;
-    if ~isnan(TopOfBackswingIndex)
-        TopUsesMissingData = any(isnan(ClubSpeedEnvelope(TopRunStart:TopRunEnd)));
-    end
-
-    SwingMetrics = table(string(recordingRelativePath), PeakRadialSpeed_mps, ...
-        BackswingDuration_s, DownswingDuration_s, TempoRatio, ...
-        BackswingStartTime_s, TopOfBackswingTime_s, PeakSpeedTime_s, ...
-        TopUsesMissingData, 'VariableNames', ...
-        {'Recording','PeakRadialSpeed_mps','BackswingDuration_s', ...
-         'DownswingDuration_s','TempoRatio','BackswingStartTime_s', ...
-         'TopOfBackswingTime_s','PeakSpeedTime_s','TopUsesMissingData'});
-
-    % SwingMetrics.DownswingStartTime_s = DownswingStartTime_s;
-    % SwingMetrics.TransitionDuration_s = TransitionDuration_s;
-
+    %% Detect swing events using OS-CFAR clusters
+    [metrics, trace] = DetectSwingEvents(osClusterMap, DisplaySpeed, t, SwingParameters);
+
+    SwingMetrics = struct2table(metrics);
+    SwingMetrics.Recording = string(recordingRelativePath);
     AllSwingMetrics = [AllSwingMetrics; SwingMetrics];
+    AllSwingTraces{i} = trace; % Includes raw/filled data, masks and parameters
     disp(SwingMetrics);
 
-    %% Step 9: final diagnostic plot
-    figure;
-    imagesc(t,DisplaySpeed,DisplayPowerDB,SpectrogramBounds);
-    axis xy;
-    hold on;
-    plot(t,ClubSpeedSmoothed,'k','LineWidth',1.5);
+    PlotSwingEvents(t, DisplaySpeed, DisplayPowerDB, SpectrogramBounds, ...
+        metrics, trace, wavFile_CW);
 
-    % if ~isnan(DownswingStartTime_s)
-    % xline(DownswingStartTime_s,'--w','Downswing start','LineWidth',1.2);
-    % end
-    if ~isnan(BackswingStartTime_s)
-        xline(BackswingStartTime_s,'--w','Backswing start','LineWidth',1.2);
-    end
-    if ~isnan(TopOfBackswingTime_s)
-        xline(TopOfBackswingTime_s,'--w','Top of backswing','LineWidth',1.2);
-    end
-    xline(PeakSpeedTime_s,'--w','Peak radial speed','LineWidth',1.2);
-
-    xlabel('Time (s)');
-    ylabel('Radial speed (m/s)');
-    title({wavFile_CW, sprintf( ...
-        'Peak %.2f m/s | Backswing %.3f s | Downswing %.3f s | Tempo %.2f', ...
-        PeakRadialSpeed_mps, BackswingDuration_s, DownswingDuration_s, ...
-        TempoRatio)}, 'Interpreter','none');
-    colorbar;
-    colormap('jet');
-
-
-     %% original spectrogram and speed-time plot
-    SpectrogramBounds = [-50 0]; %intensity color bounds in dB
-    
-    % PlotSpectrogram(S,f,t,wavFile_CW,SpectrogramBounds);
-
-    
     % PlotSpeedvsTime(S,f,t,fc,wavFile_CW,maxSpeed,SpectrogramBounds);
-
- 
-end 
+end
 
 %% Results for all selected recordings
  disp(AllSwingMetrics);
-
+ % Optional exports (uncomment if needed).
+ % writetable(AllSwingMetrics,fullfile(projectRoot,'SwingMetrics.csv'));
+ % save(fullfile(projectRoot,'SwingDetectionResults.mat'), ...
+ %     'AllSwingMetrics','AllSwingTraces','SwingParameters');
