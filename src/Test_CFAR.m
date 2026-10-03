@@ -1,5 +1,9 @@
+%Ebrahiem Slamang
+%EEE4022S
+
 function MeasuredPFA = Test_CFAR(Method, UseAsymmetricCFAR)
 % Test CFAR detector using noise only: every detection is a false alarm.
+% Run in Command Window
 % Examples: Test_CFAR('CA', true) or Test_CFAR('OS', false).
 % Both inputs are required. Method must be 'CA' or 'OS'.
 % Checks PFA only
@@ -12,7 +16,7 @@ function MeasuredPFA = Test_CFAR(Method, UseAsymmetricCFAR)
     maxSpeed = 60;
     AsymmetricMaxSpeed = 60;
 
-    nSpeedBins = 2400; %160;
+    nSpeedBins = 2000; 
     nColumns = 10000;
     speed = linspace(0, 80, nSpeedBins);
 
@@ -45,7 +49,7 @@ function MeasuredPFA = Test_CFAR(Method, UseAsymmetricCFAR)
     for row = 1:nSpeedBins
         if speed(row) >= MinimumDetectionSpeed && speed(row) <= maxSpeed
             for column = 1:nColumns
-                % Your CFAR functions leave untested thresholds as NaN.
+                % CFAR functions leave untested thresholds as NaN.
                 if ~isnan(Threshold(row, column))
                     TestedCells = TestedCells + 1;
                     if DetectionMap(row, column) == 1
@@ -62,7 +66,7 @@ function MeasuredPFA = Test_CFAR(Method, UseAsymmetricCFAR)
    %% 5. Performance check
 
    
-    % There are no targets, so every detection is a false alarm.
+    % no targets, so every detection is a false alarm.
     NumberOfFalseAlarms = FalseAlarms;
     NumberOfCUTsTested = TestedCells;
     
@@ -105,11 +109,9 @@ function MeasuredPFA = Test_CFAR(Method, UseAsymmetricCFAR)
     end
     
    
-    fprintf('Approximate 3-sigma range:     %.1f to %.1f\n', ...
-        lowerLimit, upperLimit);
+    fprintf('Approximate 3-sigma range:     %.1f to %.1f\n', lowerLimit, upperLimit);
     
-    if NumberOfFalseAlarms >= lowerLimit && ...
-            NumberOfFalseAlarms <= upperLimit
+    if NumberOfFalseAlarms >= lowerLimit && NumberOfFalseAlarms <= upperLimit
     
         fprintf('Statistical check: Within the approximate 3-sigma range.\n');
     else

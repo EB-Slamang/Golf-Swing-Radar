@@ -17,7 +17,7 @@ The plotted speed is the radial component along the radar beam. The current pipe
 | `src/compute_spectrogram.m` | Existing helper called to calculate the spectrogram. |
 | `src/PlotSpeedvsTime.m` | Existing helper called to plot the original radar return. |
 
-The five documented MATLAB files and this README are an update to the existing repository, not a standalone replacement. Keep the existing spectrogram and plotting helpers. `PlotSpectrogram` is also referenced, but its call is currently commented out. Those helper implementations were not included in this documentation update.
+The five documented MATLAB files and this README are an update to the existing repository, not a standalone replacement. Keep the existing spectrogram and plotting helpers. 
 
 ## Requirements and setup
 
@@ -36,7 +36,6 @@ The five documented MATLAB files and this README are an update to the existing r
 4. Edit `wavFile_CW_All` to select recordings. Uncomment additional entries to process several files.
 5. Run `Golf_Club_Measurements` from MATLAB.
 
-Keep local dataset paths and participant recordings out of public commits. Check the repository's `.gitignore` before committing `config_local.m` or data files.
 
 ## Processing stages
 

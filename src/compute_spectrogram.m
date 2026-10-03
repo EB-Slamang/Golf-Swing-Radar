@@ -1,3 +1,5 @@
+%Ebrahiem Slamang
+%EEE4022S
 %======= Sprectrogram function =======
 
 function [S, f, t] = compute_spectrogram(x, fs, frameLen, overlapFrac, win, nfft)
