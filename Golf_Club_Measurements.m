@@ -23,24 +23,24 @@ assert(isfolder(dataRoot), 'Dataset folder does not exist: %s', dataRoot);
 %% Recording selection
 % To process other recordings just uncomment them.
 wavFile_CW_All = {
-    % fullfile('P001', 'session1', 'BackgroundTest.wav')
+        
+
+        %E.S Second Session Recordings
+        %XONAR
      % fullfile('P001', 'session2', 'Driver_FullSwing_Test1_3_5m.wav')
      % fullfile('P001', 'session2', 'Driver_FullSwing_Test2_2m.wav')
-     
+        %Sound Blaster
      % fullfile('P001', 'session2', 'Driver_FullSwing_Test3_3_5m_SoundBlaster.wav')
      % fullfile('P001', 'session2', 'Driver_FullSwing_Test4_2m_SoundBlaster.wav')
      % fullfile('P001', 'session2', 'Driver_FullSwing_Test5_3m_SoundBlaster.wav')
      % fullfile('P001', 'session2', 'Driver_FullSwing_Test6_2_5m_SoundBlaster.wav')
-     fullfile('P001', 'session2', 'Driver_FullSwing_Test7_3m_SoundBlaster_Slow&stiff.wav')
-     
+     % fullfile('P001', 'session2', 'Driver_FullSwing_Test7_3m_SoundBlaster_StraightArm.wav')
 
      % fullfile('P001', 'session2', '7Iron_FullSwing_Test1_2_5m_SoundBlaster.wav')
      % fullfile('P001', 'session2', '7Iron_FullSwing_Test2_3m_SoundBlaster.wav')
      % fullfile('P001', 'session2', '7Iron_FullSwing_Test3_2m_SoundBlaster.wav')
-    
 
-     % 
-     fullfile('P001', 'session2', 'Driver_FullSwing1_3m_SoundBlaster.wav')
+     % fullfile('P001', 'session2', 'Driver_FullSwing1_3m_SoundBlaster.wav')
      % fullfile('P001', 'session2', 'Driver_FullSwing2_3m_SoundBlaster.wav')
      % fullfile('P001', 'session2', 'Driver_FullSwing3_3m_SoundBlaster.wav')
      % fullfile('P001', 'session2', 'Driver_FullSwing4_3m_SoundBlaster.wav')
@@ -51,18 +51,20 @@ wavFile_CW_All = {
      % fullfile('P001', 'session2', 'Driver_FullSwing9_3m_SoundBlaster.wav')
      % fullfile('P001', 'session2', 'Driver_FullSwing10_3m_SoundBlaster.wav')
 
-
+        %E.S Third Session recordings
+        %XONAR
+            %Tests
     % fullfile('P001', 'session3', 'Driver_FullSwing_Test1_3m.wav')
-    % fullfile('P001', 'session3', 'Hand_test1.wav')
     % fullfile('P001', 'session3', 'Driver_FullSwing_Test2_3m.wav')
     % fullfile('P001', 'session3', 'Driver_FullSwing_Test3_3m_LineInput.wav')
     % fullfile('P001', 'session3', 'Driver_FullSwing_Test4_2_5m_LineInput.wav')
     % fullfile('P001', 'session3', 'Driver_FullSwing_Test5_2m_LineInput.wav')
     % fullfile('P001', 'session3', 'Driver_FullSwing_Test6_3m.wav')
-    fullfile('P001', 'session3', 'Driver_FullSwing_Test7_3m_Slow&stiff.wav')
+    % fullfile('P001', 'session3', 'Driver_FullSwing_Test7_3m_StraightArm.wav')
+    % fullfile('P001', 'session3', 'Headless.wav')
     
-
-    fullfile('P001', 'session3', 'Driver_FullSwing1_3m.wav')
+        %Dataset
+    % fullfile('P001', 'session3', 'Driver_FullSwing1_3m.wav')
     % fullfile('P001', 'session3', 'Driver_FullSwing2_3m.wav')
     % fullfile('P001', 'session3', 'Driver_FullSwing3_3m.wav')
     % fullfile('P001', 'session3', 'Driver_FullSwing4_3m.wav')
@@ -73,7 +75,37 @@ wavFile_CW_All = {
     % fullfile('P001', 'session3', 'Driver_FullSwing9_3m.wav')
     % fullfile('P001', 'session3', 'Driver_FullSwing10_3m.wav')
 
+    % fullfile('P001', 'session3', '7Iron_FullSwing1_3m.wav')
+    % fullfile('P001', 'session3', '7Iron_FullSwing2_3m.wav')
+    % fullfile('P001', 'session3', '7Iron_FullSwing3_3m.wav')
+    % fullfile('P001', 'session3', '7Iron_FullSwing4_3m.wav')
+    % fullfile('P001', 'session3', '7Iron_FullSwing5_3m.wav')
+    % fullfile('P001', 'session3', '7Iron_FullSwing6_3m.wav')
+    % fullfile('P001', 'session3', '7Iron_FullSwing7_3m.wav')
+    % fullfile('P001', 'session3', '7Iron_FullSwing8_3m.wav')
+    % fullfile('P001', 'session3', '7Iron_FullSwing9_3m.wav')
+    % fullfile('P001', 'session3', '7Iron_FullSwing10_3m.wav')
 
+    % fullfile('P001', 'session3', 'Wedge_FullSwing1_3m.wav')
+    % fullfile('P001', 'session3', 'Wedge_FullSwing2_3m.wav')
+    % fullfile('P001', 'session3', 'Wedge_FullSwing3_3m.wav')
+    % fullfile('P001', 'session3', 'Wedge_FullSwing4_3m.wav')
+    % fullfile('P001', 'session3', 'Wedge_FullSwing5_3m.wav')
+    % fullfile('P001', 'session3', 'Wedge_FullSwing6_3m.wav')
+    % fullfile('P001', 'session3', 'Wedge_FullSwing7_3m.wav')
+    % fullfile('P001', 'session3', 'Wedge_FullSwing8_3m.wav')
+    % fullfile('P001', 'session3', 'Wedge_FullSwing9_3m.wav')
+    % fullfile('P001', 'session3', 'Wedge_FullSwing10_3m.wav')
+
+        %J.M First Session Recordings
+        %Tests
+    % fullfile('P002', 'session1', 'Headless1.wav')
+    % fullfile('P002', 'session1', 'Headless2.wav')
+    % fullfile('P002', 'session1', 'Ball1.wav')
+    % fullfile('P002', 'session1', 'Ball2.wav')
+    % fullfile('P002', 'session1', 'Ball3.wav')
+
+        %Dataset
     % fullfile('P002', 'session1', 'Driver_FullSwing1.wav')  
     % fullfile('P002', 'session1', 'Driver_FullSwing2.wav')
     % fullfile('P002', 'session1', 'Driver_FullSwing3.wav')
@@ -94,7 +126,7 @@ wavFile_CW_All = {
     % fullfile('P002', 'session1', '7Iron_DownSwing1.wav')
     % fullfile('P002', 'session1', '7Iron_DownSwing2.wav')
     % fullfile('P002', 'session1', '7Iron_DownSwing3.wav')
-    % % 
+    % 
     % fullfile('P002', 'session1', '7Iron_Fullswing1_Slow.wav')
     % fullfile('P002', 'session1', '7Iron_Fullswing2.wav')
     % fullfile('P002', 'session1', '7Iron_Fullswing3.wav')
@@ -114,14 +146,64 @@ wavFile_CW_All = {
     % fullfile('P002', 'session1', 'Wedge_FullSwing3.wav')
     % fullfile('P002', 'session1', 'Wedge_FullSwing4.wav')
     % fullfile('P002', 'session1', 'Wedge_FullSwing5.wav')
-    % 
-    % 
-    % fullfile('P002', 'session1', 'Headless1.wav')
-    % fullfile('P002', 'session1', 'Headless2.wav')
-    % 
-    % fullfile('P002', 'session1', 'Ball1.wav')
-    % fullfile('P002', 'session1', 'Ball2.wav')
-    % fullfile('P002', 'session1', 'Ball3.wav')
+  
+
+        %J.M Second Session Recordings
+        %Tests
+    % fullfile('P002', 'session2', 'Practice.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_2m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_2_5m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_3_5m.wav')
+
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_2m_10deg_23cm.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_2_5m_10deg_23cm.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_3m_10deg_23cm.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_3_5m_10deg_23cm.wav')
+
+    %  fullfile('P002', 'session2', 'Driver_Fullswing_Test_2m_15deg_23cm.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_2_5m_15deg_23cm.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_3m_15deg_23cm.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_3_5m_15deg_23cm.wav')
+
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_2m_15deg_41cm.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_2_5m_15deg_41cm.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_3m_15deg_41cm.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing_Test_3_5m_15deg_41cm.wav')
+
+        %Dataset
+    % fullfile('P002', 'session2', 'Driver_Fullswing1_3m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing2_3m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing3_3m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing4_3m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing5_3m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing6_3m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing7_3m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing8_3m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing9_3m.wav')
+    % fullfile('P002', 'session2', 'Driver_Fullswing10_3m.wav')
+
+    % fullfile('P002', 'session2', '7Iron_Fullswing1_3m.wav')
+    % fullfile('P002', 'session2', '7Iron_Fullswing2_3m.wav')
+    % fullfile('P002', 'session2', '7Iron_Fullswing3_3m.wav')
+    % fullfile('P002', 'session2', '7Iron_Fullswing4_3m.wav')
+    % fullfile('P002', 'session2', '7Iron_Fullswing5_3m.wav')
+    % fullfile('P002', 'session2', '7Iron_Fullswing6_3m.wav')
+    % fullfile('P002', 'session2', '7Iron_Fullswing7_3m.wav')
+    % fullfile('P002', 'session2', '7Iron_Fullswing8_3m.wav')
+    % fullfile('P002', 'session2', '7Iron_Fullswing9_3m.wav')
+    % fullfile('P002', 'session2', '7Iron_Fullswing10_3m.wav')
+    
+    % fullfile('P002', 'session2', 'Wedge_Fullswing1_3m.wav')
+    % fullfile('P002', 'session2', 'Wedge_Fullswing2_3m.wav')
+    % fullfile('P002', 'session2', 'Wedge_Fullswing3_3m.wav')
+    % fullfile('P002', 'session2', 'Wedge_Fullswing4_3m.wav')
+    % fullfile('P002', 'session2', 'Wedge_Fullswing5_3m.wav')
+    % fullfile('P002', 'session2', 'Wedge_Fullswing6_3m.wav')
+    % fullfile('P002', 'session2', 'Wedge_Fullswing7_3m.wav')
+    % fullfile('P002', 'session2', 'Wedge_Fullswing8_3m.wav')
+    % fullfile('P002', 'session2', 'Wedge_Fullswing9_3m.wav')
+    % fullfile('P002', 'session2', 'Wedge_Fullswing10_3m.wav')
+    
     
     
                     };
@@ -134,7 +216,7 @@ lambda = c/fc;         %radar wavelength (m)
 
 CPI = 0.01;            %coherent processing interval (s)
 overlapFrac = 0.95;    %overlap between spectrogram frames
-maxSpeed = 55;         %maximum speed shown on the plots (m/s)
+maxSpeed = 80;         %maximum speed shown on the plots (m/s)
 dt = 5.8957e-04;
 
 
@@ -213,8 +295,6 @@ SwingParameters.MovingAverageFrames = 10;     %3
 % within +/- 40 ms. Report their maximum amplitude and its own RawPeakTime_s.
 % Phase durations still use PeakSpeedTime_s (the smoothed-peak timestamp).
 SwingParameters.PeakSearchHalfWidth_s = 0.04;
-
-
 
 % Alternative top rule: sustained rise beginning within the low-speed region.
 % Test a 60 ms forward interval from each measured candidate in the low-speed region.
