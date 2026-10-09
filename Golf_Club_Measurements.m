@@ -164,22 +164,6 @@ Rank = ceil(0.3* RefWindowOS); % OS CFAR parameter for kth smallest detection: 0
 %% detection cleaning parameters
 MinimumDetectionPowerDB = -55; % minimum power used to filter out lower power noise (dB)
 
-%% Marker reduction after DBSCAN clusters
-
-ClusterGapBins = 2; % maximum missing speed bins allowed within one band when creating markers
-
-% 0 gives the cluster centre and 1 gives its upper edge
-UpperEdgeWeight = 0.3; % Weight used to determine how markers are position in speed groups
-
-%larger values pull the centroid towards the stronger bins
-PowerWeightExponent = 10;   %exponent used to weight marker position relative to higher power bins
-
-MarkerSpeedWidth = 4;   % (m/s) marker group vertical width
-
-FrameStep = 6; % Every nth occupied column, plus each cluster's last column
-
-WithinClusterMode = 'upper_band'; % 'all_bands' Or 'upper_band' for the upper band per cluster
-
 %% DBSCAN Clustering parameters
 TimeRadius = 0.002;    % Neighbourhood time radius: 2 ms
 SpeedRadius = 2.0;     % Neighbourhood speed radius: 2 m/s
@@ -260,7 +244,6 @@ SwingParameters.MinimumGapReport_s = 0.001;         %0.010
 %% plot settings
 SpectrogramBounds = [-55 0];
 ShowPowerGatedCandidates = true; % Toggle faint candidate overlays
-AllMarkerResults = cell(numel(wavFile_CW_All),2); % CA and OS marker tables
 
 AllSwingMetrics = table; % Reset results whenever the full script is run
 AllSwingTraces = cell(numel(wavFile_CW_All),1);
@@ -415,37 +398,24 @@ for i = 1:length(wavFile_CW_All)
     % grid on;
     % axis tight;
     
-    %% Compare markers from independently clustered CA and OS detections
+    %% Compare CA and OS detections
     
     % Cluster each detector separately so their marker results are independent.
     candidateMaps = {CandidatesCA, CandidatesOS};
     detectorNames = {'CA-CFAR', 'OS-CFAR'};
 
-
-    MarkerResults = cell(1,2); % {1} = CA, {2} = OS, current recording
     ClusterMaps = cell(1,2);
 
     figure;
     comparisonAxes = gobjects(2,1);
 
-    %loop through CFAR detectors and plot Markers onto detections after
-    %dbscan
+    %loop through CFAR detectors and plot detections
     for detectorIdx = 1:2 
         [~, currentClusterMap] = ClusterDetections( ...
             candidateMaps{detectorIdx}, DisplaySpeed, t, ...
             TimeRadius, SpeedRadius, MinPoints);
-        
-        %create reduced markers from dbscan clusters
-        [markerTimes, markerSpeeds, markerClusterIDs, markerColumns] = ...
-            SelectClusterMarkers(currentClusterMap, DisplayPower, ...
-                DisplaySpeed, t, ClusterGapBins, FrameStep, ...
-                UpperEdgeWeight, PowerWeightExponent, WithinClusterMode, MarkerSpeedWidth);
 
         ClusterMaps{detectorIdx} = currentClusterMap;
-        % Retain cluster labels and original time-column indices for later analysis.
-        MarkerResults{detectorIdx} = table(markerTimes, markerSpeeds, ...
-            markerClusterIDs, markerColumns, 'VariableNames', ...
-            {'Time_s','Speed_mps','ClusterID','TimeColumn'});
 
         comparisonAxes(detectorIdx) = subplot(2,1,detectorIdx);
         imagesc(t, DisplaySpeed, DisplayPowerDB, SpectrogramBounds);
@@ -453,95 +423,23 @@ for i = 1:length(wavFile_CW_All)
         hold on;
 
         % Candidate overlays to show detector results in magenta
-        if ShowPowerGatedCandidates
-            [candidateRows, candidateCols] = find(candidateMaps{detectorIdx});
-            plot(t(candidateCols), DisplaySpeed(candidateRows), 'mx', 'MarkerSize', 2);
-        end
-
-        % Plot Markers
-        plot(markerTimes,markerSpeeds,'kx','MarkerSize',6,'LineWidth',1);
-
-        title(sprintf('%s: %s reduced markers', wavFile_CW, detectorNames{detectorIdx}), 'Interpreter', 'none');
+        
+        [candidateRows, candidateCols] = find(candidateMaps{detectorIdx});
+        plot(t(candidateCols), DisplaySpeed(candidateRows), 'mx', 'MarkerSize', 8);
+ 
+        title(sprintf('%s: %s Candidate Detection', wavFile_CW, detectorNames{detectorIdx}), 'Interpreter', 'none');
         xlabel('Time (s)');
         ylabel('Radial speed (m/s)');
         colorbar;
 
-        fprintf('%s: %d clustered cells -> %d markers\n', detectorNames{detectorIdx}, ...
-            nnz(currentClusterMap > 0),  numel(markerTimes));
     end
     linkaxes(comparisonAxes, 'xy');
     colormap('jet');
+ 
+    %% Detect swing events using OS-CFAR clusters
 
-    % Preserve each recording's marker tables if several files are selected.
-    AllMarkerResults{i,1} = MarkerResults{1};
-    AllMarkerResults{i,2} = MarkerResults{2};
-    %% OS-CFAR clusters with reduced markers overlaid
-    
     % Reuse the OS results calculated above for this recording.
     osClusterMap = ClusterMaps{2};
-    osMarkers = AllMarkerResults{i,2};
-
-    % 
-    % figure;
-    % hold on;
-    % 
-    % % Noise: small grey x's.
-    % [noiseRows, noiseCols] = find(osClusterMap == -1);
-    % 
-    % noiseHandle = scatter( ...
-    %     t(noiseCols), DisplaySpeed(noiseRows), ...
-    %     10, [0.6 0.6 0.6], 'x', 'DisplayName', 'DBSCAN noise');
-    % 
-    % % Get each cluster ID
-    % clusterIDs = unique(osClusterMap(osClusterMap > 0));
-    % colours = lines(numel(clusterIDs));
-    % 
-    % % Plot each cluster once.
-    % for k = 1:numel(clusterIDs)
-    % 
-    %     [rows, cols] = find(osClusterMap == clusterIDs(k));
-    % 
-    %     scatter(t(cols), DisplaySpeed(rows),12, colours(k,:), 'filled', ...
-    %         'MarkerFaceAlpha', 0.25, 'HandleVisibility', 'off');
-    % end
-    % 
-    % 
-    % markerHandle = plot(osMarkers.Time_s, osMarkers.Speed_mps, ...
-    %     'kx', 'LineStyle', 'none', ...
-    %     'MarkerSize', 6, 'LineWidth', 1.2);
-    % 
-    % xlabel('Time (s)');
-    % ylabel('Radial speed (m/s)');
-    % 
-    % title(sprintf('%s: OS-CFAR clusters and reduced markers', ...
-    %     wavFile_CW), 'Interpreter', 'none');
-    % 
-    % legend([noiseHandle, markerHandle], {'DBSCAN noise', 'Reduced OS-CFAR markers'}, ...
-    %     'Location', 'best');
-    % 
-    % grid on;
-    % axis tight;
-    % 
-    % fprintf('OS-CFAR overlay: %d clustered cells -> %d reduced markers\n', ...
-    %     nnz(osClusterMap > 0), height(osMarkers));
-
- 
-
-%% Plot Reduced Markers on Seperate Figure
-% Column 2 always contains OS-CFAR results, regardless of UseOSCFAR.
-% Markers = MarkerResults{2};
-% 
-% figure;
-% 
-% plot(Markers.Time_s, Markers.Speed_mps, 'k.', ...
-%     'LineStyle', 'none', 'MarkerSize', 6, 'LineWidth', 1);
-% 
-% xlabel('Time (s)');
-% ylabel('Radial speed (m/s)');
-% title('OS-CFAR reduced markers');
-% grid on;
-
-    %% Detect swing events using OS-CFAR clusters
     % metrics: event timestamps, durations and selection/status diagnostics.
     % trace: raw/filled/smoothed envelopes, masks, robust comparison and effective parameters.
     [metrics, trace] = DetectSwingEvents(osClusterMap, DisplaySpeed, t, SwingParameters);
