@@ -60,7 +60,7 @@ function PlotSwingEvents(t, speed, powerDB, bounds, metrics, trace, recording)
 end
 
 function drawEvents(m, colour)
-    times = [m.BackswingStartTime_s m.TopOfBackswingTime_s m.PeakSpeedTime_s];
+    times = [m.BackswingStartTime_s m.TopOfBackswingTime_s m.RawPeakTime_s];
     labels = {'Backswing start','Top candidate','Peak radial speed'};
     for k = 1:numel(times)
         if isfinite(times(k))
