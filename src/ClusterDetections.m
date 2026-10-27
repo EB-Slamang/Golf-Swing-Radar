@@ -3,6 +3,19 @@
 
 function [DetectionClustered, ClusterMap] = ClusterDetections( ...
     DetectionMap, speed, t, TimeRadius, SpeedRadius, MinPoints)
+% CLUSTERDETECTIONS - Group candidate cells using DBSCAN in scaled time-speed space.
+%
+% INPUTS: DetectionMap is logical (speed rows by time columns); speed is in m/s;
+% t is in seconds. TimeRadius and SpeedRadius are positive scales; MinPoints
+% is the minimum neighbourhood population, counting the tested cell itself.
+%
+% OUTPUTS: DetectionClustered is true for retained core/border points. ClusterMap
+% stores 0 for cells never offered to DBSCAN, -1 for rejected input points, and
+% positive integers for clusters. Cluster identities are not physical object IDs.
+%
+% All positive labels are retained; this function does not select one club-head
+% cluster or estimate events. Statistics and Machine Learning Toolbox is required
+% for dbscan when enough candidate points exist to attempt clustering.
 % Group detections in speed-time space using DBSCAN.
 % Requires Statistics and Machine Learning Toolbox (dbscan).
 % TimeRadius is in seconds; SpeedRadius is in m/s.
@@ -29,6 +42,10 @@ function [DetectionClustered, ClusterMap] = ClusterDetections( ...
     pointSpeeds = speed(rows);
 
     % Scale the two axes separately to define an elliptical neighbourhood.
+    % Dividing each coordinate by its own scale makes the distance dimensionless.
+    % With epsilon=1, a neighbour satisfies (deltaTime/TimeRadius)^2 +
+    % (deltaSpeed/SpeedRadius)^2 <= 1. These are ellipse semi-axes in physical units.
+    % Subtracting t(1) only changes the origin, not any pairwise time distance.
     points = [(pointTimes - t(1)) / TimeRadius, pointSpeeds / SpeedRadius];
 
     % Too few detections cannot form a DBSCAN core point.

@@ -1,4 +1,13 @@
 function [] = PlotSpeedvsTime(S,f,t,fc,wavFile,Maxspeed,bnds)
+% PLOTSPEEDVSTIME - Display positive-frequency power on a radial-speed axis.
+% Inputs: complex STFT S, frequency f (Hz), time t (s), assumed carrier fc (Hz),
+% recording label wavFile, maximum displayed speed Maxspeed (m/s), and dB limits.
+%
+% Only speeds from zero to Maxspeed are displayed. Magnitudes are divided by
+% the largest magnitude in that band, then converted using 20*log10. This is
+% equivalent to relative power in dB for nonzero data. It is a display helper,
+% not the conditioned input to CFAR and not a speed-envelope extractor.
+% The all-zero-input case is outside its intended recorded-signal use.
 
 % function [] = PlotSpeedvsTime(S,f,t,fc,wavFile,Maxspeed,bnds)
 % 
@@ -15,7 +24,7 @@ c = 3e8; %speed of light (m/s)
 lambda = c/fc; %wavelength
 
 speed = f*lambda/2; % (m/s)
-speed_Idx = find((speed <= Maxspeed) & (speed >= 1.5)); %creating indices where speed is between 1.5 m/s and max
+speed_Idx = find((speed <= Maxspeed) & (speed >= 0)); %creating indices where speed is between 1.5 m/s and max
 
 SpeedVector = speed(speed_Idx); %applying indices to speed vector for plotting
 S_OfInterest = S(speed_Idx, :); %applying indices to Spectrogram values

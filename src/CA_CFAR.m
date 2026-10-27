@@ -4,6 +4,24 @@
 function [DetectionMap, Threshold] = CA_CFAR(PowerData, speed, ...
     PFA, RefWindow, GuardCells, MinimumDetectionSpeed, maxSpeed, ...
     UseAsymmetricCFAR, AsymmetricMaxSpeed, LowerRefCells)
+% CA_CFAR - Adaptive detection down speed rows, separately in each time column.
+%
+% PowerData is a speed/frequency-row by time-column matrix of LINEAR power.
+% Its row order must match the ascending speed vector in m/s. This function
+% returns two matrices of the same shape: DetectionMap (logical crossings)
+% and Threshold (linear-power threshold; NaN means the CUT was not tested).
+%
+% PFA is a nominal probability under independent, homogeneous exponential
+% background powers. RefWindow is total reference count; GuardCells is per side.
+% The selected speed limits restrict both the CUT and its reference rows.
+% UseAsymmetricCFAR requests LowerRefCells below and the remainder above a CUT
+% at or below AsymmetricMaxSpeed. Otherwise half are requested on each side.
+% Use an even RefWindow when a symmetric allocation can be selected.
+%
+% Near a selected-band boundary, missing references move to the opposite side.
+% If the total still cannot fit, the row remains untested: no wrapping occurs.
+% The final comparison is inclusive (power >= threshold). Input conditioning
+% and correlation can change achieved PFA; verify empirically with Test_CFAR.
 % Apply CA-CFAR to each time column using linear power, not dB.
 % CUT = cell under test; RefWindow is the total reference count.
 % GuardCells is the number of excluded cells on EACH side of the CUT.
@@ -24,6 +42,9 @@ function [DetectionMap, Threshold] = CA_CFAR(PowerData, speed, ...
     Threshold = nan(nSpeedBins, nTimeBins);
 
     % CFAR constant for the sum of RefWindow reference powers.
+    % CA uses the SUM of reference powers below. Therefore its factor is
+    % PFA^(-1/N)-1. If a MEAN were used instead, the factor would be N times as
+    % large. These two conventions yield the same threshold when used correctly.
     alpha = PFA^(-1/RefWindow) - 1;
 
     % Both CUTs and reference cells are restricted to this speed range.

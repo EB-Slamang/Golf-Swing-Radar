@@ -1,17 +1,15 @@
-# Computer-specific configuration
-config_local.m
+# The bundled Datasets folder and reference Results CSVs are intentionally tracked.
+# Do not ignore *.wav or /Datasets/: those files make this project self-contained.
 
-# Recordings and generated outputs
-/datasets/
-/results/
-/outputs/
-*.wav
-*.mp4
-*.mov
-
-# MATLAB temporary files
+# MATLAB editor and workspace files
 *.asv
 *.m~
 matlab.mat
 matlab_workspace.mat
+debug.log
+
+# Newly generated verification runs and optional output folders
+/CFAR_Check_*/
+/outputs/
+/Figures/
 /Golf_Club_Measurements_Backup.m

@@ -1,246 +1,324 @@
-# Golf Swing Radar Processing
+# Golf Swing Radar — self-contained MATLAB pipeline
 
-MATLAB processing pipeline for the EEE4022S golf swing project by Ebrahiem Slamang. The pipeline processes 24 GHz continuous-wave (CW) radar WAV recordings, compares CA-CFAR and OS-CFAR detections, groups returns using DBSCAN, and estimates swing events and timing metrics from OS-CFAR clusters.
+This project processes recorded IPM-365 continuous-wave radar signals offline.
+It generates spectrograms, detects and groups returns, extracts an upper
+radial-speed envelope, and estimates a supported peak, backswing onset and top.
+The bundled WAV recordings are inside `Datasets`, so no machine-specific
+configuration file or external dataset path is needed.
 
-Speeds are radial components along the radar beam, rather than total three-dimensional club-head speeds. Swing events are algorithmic candidates requiring reference/video validation; retained clusters are not automatically identified as club-head returns.
+## 1. Quick start
 
-## Repository files
+1. Download and **extract** the complete project. Do not run it inside a ZIP.
+2. Keep `Golf_Club_Measurements.m`, `RecordingSelection.m`, `src` and `Datasets`
+   together inside the `Pipeline` folder.
+3. Open `Golf_Club_Measurements.m` in MATLAB and press **Run**. If MATLAB asks
+   whether to change folder or add the folder to the path, choose **Change Folder**.
+4. The supplied selection runs `P002/session1/Driver_FullSwing1.wav`. That WAV
+   is included. It is an example recording, not a batch reproduction of the
+   complete 127-recording evaluation.
+5. Inspect the figures and the workspace tables `AllSwingMetrics` and `Comparison`.
 
-The main script, configuration files and README belong in the `Pipeline` root. Processing and plotting functions belong in `src`.
+You can move the whole `Pipeline` folder to another computer. The main script uses
+its own location to construct `Pipeline/Datasets/<selected relative path>` and to
+add `src` to MATLAB's function path. It does not depend on your current username.
+The script starts with `clear` and `close all`, so save other workspace work first.
 
-| Path | Purpose |
+## 2. Requirements
+
+- MATLAB with support for the functions used here, including `table`, `string`,
+  `movmedian`, `movmean`, `xline` and `exportgraphics`. Use the project's recent
+  MATLAB environment for the closest reproduction; older releases may differ.
+- **Statistics and Machine Learning Toolbox** for `dbscan` in `ClusterDetections`.
+- No additional toolbox is introduced by the comments or portable folder setup.
+  The STFT, Hamming window, CFAR formulas and robust onset fit are implemented
+  directly; the code does not call the toolbox `spectrogram` or `robustfit` functions.
+- Disk space for the extracted recordings and any newly saved figures/results.
+
+The synthetic CFAR test does not use DBSCAN and does not need the recorded dataset.
+MATLAB was unavailable in the editing environment: syntax and package checks were
+performed, but this documented release has not been executed there.
+
+## 3. Folder layout
+
+| File/folder | Purpose |
 | --- | --- |
-| `Golf_Club_Measurements.m` | Select recordings, configure processing, run the pipeline and collect results. |
-| `config_local_example.m` | Example local dataset configuration. |
-| `config_local.m` | Machine-specific configuration defining `dataRoot`. |
-| `.gitignore` | Git exclusions; check that local configuration and generated files are excluded as intended. |
-| `README.md` | Setup, processing, parameter and output documentation. |
-| `src/compute_spectrogram.m` | Calculate spectrogram values and frequency/time axes. |
-| `src/CA_CFAR.m` | Calculate CA-CFAR thresholds and detections. |
-| `src/OS_CFAR.m` | Calculate OS-CFAR thresholds and detections. |
-| `src/ClusterDetections.m` | Group candidate detections using DBSCAN. |
-| `src/DetectSwingEvents.m` | Construct a speed envelope and estimate backswing start, top, peak speed and timing. |
-| `src/PlotSwingEvents.m` | Plot swing-event results and diagnostic traces. |
-| `src/PlotSpectrogram.m` | Spectrogram plotting helper; call is currently commented out in the supplied main script. |
-| `src/PlotSpeedvsTime.m` | Speed–time plotting helper; call is currently commented out in the supplied main script. |
-| `src/Test_CFAR.m` | Separate CFAR test script; not called by the main pipeline. |
+| `Golf_Club_Measurements.m` | Main script and final analysis settings |
+| `RecordingSelection.m` | Relative paths of the WAV files to process |
+| `Datasets/P001` … `Datasets/P004` | 233 bundled radar WAV recordings, including exploratory tests |
+| `AvailableRecordings.csv` | Complete file index, with sample format and recording duration |
+| `src/` | Processing, table and plotting functions |
+| `Results/` | Four supplied pipeline/video comparison CSVs, retained unchanged |
+| `Test_CFAR.m` | Canonical standalone synthetic/noise verification script |
+| `Tests/Test_CFAR.m` | Compatibility launcher for the root verification script |
+| `DOCUMENTATION_CHANGES.md` | Changes, checks and limits of this update |
 
-The supplied folder listing also contains MATLAB `.asv` autosave files and `debug.log`. These are not required to run the pipeline.
+All 233 bundled WAVs have 44.1 kHz sample rate, one channel and 16-bit PCM.
+They include exploratory recordings as well as the retained evaluation cases;
+233 files does **not** mean 233 evaluated full swings. The earlier evaluation
+contains 127 paired rows in the four supplied Results CSVs.
 
-## Requirements and setup
+## 4. Choose recordings
 
-- MATLAB with Statistics and Machine Learning Toolbox for `dbscan`.
-- The project helpers above, available on the MATLAB path.
-- Radar WAV recordings stored beneath a local dataset folder. Additional toolbox requirements depend on the implementations of the project helpers.
+Edit only the cell array in `RecordingSelection.m`. A `%` at the beginning of
+a filename line comments it out. Keep at least one existing path active.
 
-1. Open the `Pipeline` folder in MATLAB.
-2. If `config_local.m` does not already exist, copy `config_local_example.m` to `config_local.m`. Set the dataset root, for example:
-
-   ```matlab
-   dataRoot = 'C:\path\to\radar-recordings';
-   ```
-
-   The actual example filename is `config_local_example.m`. The supplied main script's missing-configuration error still refers to the older name `config_local.example.m`.
-
-3. Edit `wavFile_CW_All` in `Golf_Club_Measurements.m`. Entries are relative to `dataRoot`, for example:
-
-   ```matlab
-   wavFile_CW_All = {
-       fullfile('P001', 'session2', 'Driver_FullSwing1_3m_SoundBlaster.wav')
-   };
-   ```
-
-4. Confirm that the selected WAV files exist. In the supplied current main script, **all recording entries are commented out**. Enable at least one entry; otherwise the processing loop runs zero times and no recording results are produced.
-
-5. Run:
-
-   ```matlab
-   Golf_Club_Measurements
-   ```
-
-The main script derives `projectRoot` from its own location, adds `src` to the path and loads `config_local.m`. It clears the workspace and closes existing figures at startup. Every uncommented recording entry is processed.
-
-## Processing stages
-
-1. **Load audio:** read the WAV file and use its first channel. The supplied script processes the complete recording without a trimming step.
-2. **Form the spectrogram:** round `CPI*fs` up to a power-of-two frame length and apply a Hamming window. Actual window duration is `framelen/fs`; time-hop spacing depends on the spectrogram helper and overlap.
-3. **Convert Doppler frequency to radial speed:** use `speed = f*lambda/2`, where `lambda = c/fc`.
-4. **Prepare power:** calculate `abs(S).^2`, normalise each frequency row by its median background power, and apply a three-frame temporal mean. Retain original power for display and the detection power gate.
-5. **Apply CA-CFAR and OS-CFAR:** calculate local thresholds independently for each time column.
-6. **Apply the original-power gate:** retain CFAR detections above the configured dB level relative to the largest original power in the displayed speed region.
-7. **Cluster candidates:** use DBSCAN for the selected detector, then cluster CA and OS candidates independently in the comparison loop.
-8. **Compare detector candidates:** display two spectrogram panels with power-gated CA/OS detections in magenta. These crosses show candidates before DBSCAN filtering, rather than only retained cluster cells.
-9. **Detect swing events:** use the full OS-CFAR cluster map to construct an envelope and estimate peak, top and backswing start.
-10. **Collect and display results:** retain swing metrics and diagnostic traces for each recording; display comparison and swing-event figures.
-
-## CFAR behaviour
-
-
-`PowerData` has speed bins in rows and time frames in columns. Both CFAR functions expect finite, nonnegative linear power, an ascending speed axis, and valid parameter values. `RefWindow` is the total reference-cell count; `GuardCells` is the guard count on each side. Use an even reference count when symmetric windows are required, `0 < PFA < 1`, and integer cell counts. For OS-CFAR, `1 <= Rank <= RefWindow`.
-
-The cell under test (CUT) and its guard cells are excluded from the reference estimate. Asymmetric mode assigns `LowerRefCells` below the CUT and the remaining reference cells above it. Above `AsymmetricMaxSpeed`, the requested split is symmetric.
-
-References stay inside the selected speed range. Near its limits, missing reference cells move to the opposite side. If the total reference count cannot fit, the CUT is skipped. Untested cells have `false` detections and `NaN` thresholds. There is no circular wrapping.
-
-- **CA-CFAR:** multiply the sum of reference powers by `PFA^(-1/RefWindow)-1`.
-- **OS-CFAR:** sort reference powers in each time column, select `Rank`, and multiply by a calibrated threshold factor. The factor is found with `fzero` using a log-form probability equation. The upper search bound doubles until the root is bracketed.
-
-The threshold equations assume independent exponential noise powers. Whitening, temporal averaging, and overlapping frames mean the requested `PFA` should not be treated as a measured false-alarm rate for this complete pipeline.
-
-## Processing settings
-
-These values reflect the latest supplied main script. They are experimental settings, not validated optima; the executable script remains authoritative if settings are changed later.
-
-| Parameter | Value | Meaning |
-| --- | --- | --- |
-| `fc` | 24 GHz | Radar centre frequency. |
-| `CPI` / `overlapFrac` | 0.01 s / 0.95 | Requested window duration and overlap fraction. |
-| `MinimumDetectionSpeed` / `maxSpeed` | 0 / 60 m/s | Selected CFAR/display speed range. |
-| `PFA` | `1e-5` | Nominal CFAR false-alarm probability. |
-| `RefWindowCA` / `GuardCellsCA` | 36 / 24 | Total references / guards per side. |
-| `RefWindowOS` / `GuardCellsOS` | 42 / 20 | Total references / guards per side. |
-| `UseAsymmetricCFAR` / `AsymmetricMaxSpeed` | `true` / 60 m/s | Asymmetric references enabled through this speed. |
-| `LowerRefCellsCA` / `LowerRefCellsOS` | 4 / 5 | Separately calculated as `ceil(0.1*RefWindowCA)` and `ceil(0.1*RefWindowOS)`. |
-| `Rank` | 13 | `ceil(0.3*RefWindowOS)`; kth smallest reference power. |
-| `MinimumDetectionPowerDB` | -55 dB | Gate relative to the display region's maximum original power. |
-| `TimeRadius` / `SpeedRadius` | 0.002 s / 2 m/s | DBSCAN neighbourhood scaling. |
-| `MinPoints` | 5 | Minimum neighbourhood cell count for a core point. |
-| `SpectrogramBounds` | `[-55 0]` dB | Plot colour limits. |
-| `ShowPowerGatedCandidates` | `true` | Assigned but not checked in the current plotting loop; candidate crosses are always drawn. |
-
-`UseOSCFAR` selects the initial detector output. Both detectors still run and are compared independently. Swing-event detection always uses the separately calculated OS-CFAR clusters, even if `UseOSCFAR` is `false`.
-
-## DBSCAN clusters
-
-DBSCAN scales time by `TimeRadius` and speed by `SpeedRadius`, then uses a Euclidean radius of 1. This defines an elliptical neighbourhood in physical coordinates. `MinPoints` counts detected cells, not distinct time frames. Cluster labels are `0` for no input detection, `-1` for noise, and positive integers for clusters. Border points assigned to clusters are retained.
-
-`ClusterMaps{1}` contains the independently calculated CA map and `ClusterMaps{2}` the OS map for the current recording. Cluster IDs are local to each detector and recording, not matched CA/OS identities. Swing detection ignores zero/noise labels and uses positive OS labels. The current pipeline does not perform reduced-marker selection or call `SelectClusterMarkers`.
-
-## Swing-event detection
+For example, to process the default recording:
 
 ```matlab
-[metrics, trace] = DetectSwingEvents( ...
-    osClusterMap, DisplaySpeed, t, SwingParameters);
+wavFile_CW_All = {
+    fullfile('P002', 'session1', 'Driver_FullSwing1.wav')
+};
 ```
 
-The detector uses the full positive-labelled OS cluster map, rather than a reduced-marker table or power weights. It estimates one dominant swing from the recording:
+To process a batch, place multiple `fullfile(...)` entries inside the same braces.
+The paths begin at `Datasets`, so do **not** add `Pipeline` or `Datasets` to each
+entry. Use `AvailableRecordings.csv` for the exact folder and filename spelling.
+The commented examples were matched to the bundled filenames, including their
+case, so they also work on case-sensitive systems when uncommented.
 
-1. **Raw envelope:** retain the highest clustered speed at each time frame. No retained detection gives `NaN`, not zero. Positive cluster identities are combined rather than tracked separately.
-2. **Bounded interpolation:** fill internal raw gaps only if measured endpoints exist, missing-frame duration is within the time limit and endpoint speeds differ by no more than the speed limit. Immediate endpoints are used; the routine does not skip an outlier endpoint to find a later replacement.
-3. **Main smoothing:** apply a median filter followed by a moving average to each finite section separately. Unfilled gaps remain missing.
-4. **Peak selection:** locate the global smoothed peak at a measured frame. Measure raw peak amplitude within a local window around that timestamp.
-5. **Low-speed region:** select the last sustained low-speed region within the pre-peak search window. Short unfilled gaps can connect its logical mask when both smoothed endpoints are low, without supplying estimated speeds.
-6. **Top candidates:** calculate a simple smoothed minimum, a sustained-rise candidate, a robust measured valley and eligible raw-gap midpoints. The robust valley uses a separate raw-data median and measured-coverage checks; interpolation does not supply measured support.
-7. **Hybrid selection:** retain the robust valley unless an eligible gap overrides it. With no robust valley, use the largest eligible gap midpoint if available.
-8. **Backswing start:** search backwards from the start of the low-speed region, find sustained motion runs and select/link them according to the start mode.
-9. **Timing:** calculate durations only when `backswing start < selected top < smoothed peak`. Otherwise retain `NaN` durations and an explanatory status.
+The current selected recording and selection order are unchanged from the upload.
+The main script does not automatically process every WAV or silently skip failures.
+A missing file causes a descriptive error.
 
-### Top-selection rules
+**Batch plotting:** four figures are created per recording by the three plotting
+calls at the end of the main loop. For a large batch, comment out those calls if
+you want metrics without hundreds of open figures. This does not disable the
+preceding signal processing or table construction.
 
-The supplied main script sets `TopMethod = 'hybrid'`. `'minimum'` is a compatibility alias for the same hybrid behaviour. The simple minimum is a diagnostic candidate, not the selected hybrid valley.
+## 5. What the processing does
 
-| Mode / condition | Selected top |
-| --- | --- |
-| Hybrid: robust valley exists; no eligible gap exceeds 35 ms | Robust measured valley. |
-| Hybrid: largest eligible gap bracket exceeds 35 ms | Largest gap midpoint. |
-| Hybrid: no robust valley; an eligible gap exists | Largest gap midpoint, even when shorter than 35 ms. |
-| Hybrid: no robust valley or eligible gap | No top candidate (`NaN`). |
-| `'rise'` | First qualifying sustained-rise candidate; no hybrid fallback. |
+1. **Read WAV:** `audioread` supplies samples and the stored sampling rate. The
+   first audio channel is retained. Samples are not converted to calibrated volts.
+2. **Compute complex STFT:** extract complete Hamming-weighted frames, subtract
+   each windowed frame's mean, calculate its FFT and centre the frequency axis.
+   The helper returns complex spectra, not power or detected speeds.
+3. **Convert frequency to speed:** use the assumed 24 GHz carrier and the
+   monostatic magnitude relation `speed = frequency * wavelength / 2`. Keep the
+   selected nonnegative-speed interval for analysis. The single real channel does
+   not independently distinguish approach from recession.
+4. **Condition power:** square spectral magnitudes, divide each frequency row by
+   its median across the recording, and average three frames along time. This
+   linear-power array is the CFAR input. A persistent target can influence its
+   own median, so normalisation is not guaranteed to preserve every return.
+5. **Apply the selected CFAR:** `UseOSCFAR = true` selects OS; `false` selects CA.
+   The switch controls the full detection → clustering → event path.
+6. **Apply the original-power gate:** require candidates also to exceed -50 dB
+   relative to the maximum original power within the retained band of that recording.
+7. **Cluster:** DBSCAN groups time-speed detections using separately scaled axes.
+   All positive cluster labels are retained; clusters are not assigned object IDs.
+8. **Extract envelope:** take the highest retained speed per frame. `NaN` means
+   no retained return. This “raw” envelope has already passed detection/clustering.
+9. **Condition envelope:** linearly fill eligible internal gaps, flag interpolated
+   samples, and smooth each finite section separately. Unfilled gaps stay missing.
+10. **Choose peak:** examine raw candidates from highest to lowest. Require other
+    raw observations nearby in both time and speed. Use the accepted raw amplitude
+    and a nearby, raw-supported smoothed maximum for the phase endpoint.
+11. **Choose top:** locate the last sustained slow region before the peak. Compare
+    a supported raw-only valley with eligible raw missing intervals. A sufficiently
+    long eligible gap overrides the valley and supplies its midpoint.
+12. **Choose onset:** work backwards from the latest qualifying motion run, linking
+    earlier runs within the allowed separation. Fit only the earliest selected
+    run's initial motion; accepted zero-speed extrapolation can precede detection.
+13. **Calculate metrics:** require `start < top < selected smoothed peak`. Invalid
+    event ordering or missing events leaves duration/tempo values missing.
 
-Eligible raw gaps must be internal, have at least the configured missing duration, lie wholly within the selected region and have raw endpoint speeds at or below the top threshold. Equal longest gaps favour the later gap.
+These are radial-speed and peak-based timing estimates. Dataset swings were
+ball-free; no impact time is extracted. Dense competing returns, preliminary
+motion and weak transition returns can still produce ambiguous events.
 
-The override uses the separation of the two bounding measured timestamps. On a uniform grid, this is `missingFrameCount*dt + dt`; the missing-frame duration alone is one hop shorter. The midpoint may fall between frames. It is an inferred timestamp, not a measured zero speed or proof of physical turnaround.
+## 6. Current settings
 
-The robust valley is a continuous supported near-minimum interval. Valid intervals are ranked by lowest median robust speed, then longest duration. Its selected timestamp is a central measured frame; disconnected minima are not averaged together.
+The uploaded numerical settings are preserved. The following values belong to
+this package, rather than older report drafts or earlier code versions.
 
-### Swing parameters
-
-| Parameter | Value | Role |
+| Setting | Value | Meaning |
 | --- | --- | --- |
-| `MotionThreshold_mps` | 0.1 | Minimum smoothed speed counted as backswing motion. |
-| `MinimumMotionDuration_s` | 0.03 | Minimum continuous motion duration. |
-| `BackswingSearchWindow_s` | 1 | Search duration before the low-region start. |
-| `BackswingStartMode` | `'linked'` | Link qualifying motion runs backwards from the latest run. |
-| `MaximumMotionGap_s` | 0.3 | Maximum run-end to run-start separation for linking. |
-| `TopThreshold_mps` | 4 | Low-speed region and candidate threshold. |
-| `MinimumTopDuration_s` | 0.1 | Minimum low-region duration, including accepted mask gaps. |
-| `TopSearchWindow_s` | 1.5 | Low-region search before the smoothed peak. |
-| `TopMethod` | `'hybrid'` | Effective top-selection mode. |
-| `MaxInterpolationGap_s` | 0.5 | Maximum missing duration for interpolation: **500 ms**. |
-| `MaxInterpolationSpeedGap_mps` | 4 | Maximum difference between immediate raw endpoint speeds. |
-| `MaxTopGap_s` | 0.1 | Maximum unfilled gap for low-region mask connection. |
-| `MedianFilterFrames` | 51 with the supplied script `dt` | Main median window derived from `medianWindow_s = 0.030`. |
-| `MovingAverageFrames` | 10 | Main moving-average frame count. |
-| `PeakSearchHalfWidth_s` | 0.04 | Raw peak-amplitude search within ±40 ms. |
-| `TopMedianWindow_s` | 0.030 | Separate raw-data robust-median window. |
-| `TopMinimumMeasuredFraction` | 0.10 | Minimum raw coverage within the robust window; centre must also be measured. |
-| `TopSpeedTolerance_mps` | Half the median speed-bin spacing | Function default; not explicitly assigned by the main script. |
-| `MinimumValleyDuration_s` | 0.05 | Minimum contiguous supported near-minimum interval. |
-| `MinimumGapReport_s` | 0.001 | Minimum raw missing duration for eligible-gap reporting. |
-| `GapOverrideDuration_s` | 0.035 | Strict bracket-separation override threshold. |
-| `RiseWindow_s` | 0.06 | Forward interval for sustained-rise testing. |
-| `MinimumRise_mps` | 1.2 | Minimum net smoothed-speed gain over that interval. |
-| `MinimumRisingFraction` | 0.60 | Minimum fraction of positive checkpoint changes. |
-| `RiseDropTolerance_mps` | 0.15 | Maximum permitted checkpoint speed decrease. |
-| `MinimumMeasuredFraction` | 0.30 | Minimum raw-frame fraction for the rise candidate only. |
+| `fc` | 24e9 Hz | Assumed carrier for frequency-to-speed conversion |
+| `CPI` | 0.01 s requested | Rounded to a power-of-two measured frame |
+| `overlapFrac` | 0.95 requested | Shared samples between successive frames |
+| `maxSpeed` | **55 m/s** | Upper CFAR/display band limit |
+| `PFA` | 1e-5 | Nominal false-alarm probability per tested cell |
+| CA / OS references | 42 / 42 total | Background cells, both sides combined |
+| CA / OS guards | 20 / 20 per side | Excluded neighbouring cells |
+| Lower/upper allocation | 5 / 37 | Away from boundaries, below the asymmetry transition |
+| `AsymmetricMaxSpeed` | 60 m/s | All of the current 0–55 m/s band uses asymmetric allocation |
+| OS rank | 13th smallest | `ceil(0.3*42)` |
+| Original-power gate | -50 dB | Relative to the recording maximum in the retained band |
+| DBSCAN time / speed scale | 0.002 s / 2 m/s | Unit-radius ellipse in scaled coordinates |
+| `MinPoints` | 5 | Nearby detected cells including the tested cell |
+| Maximum interpolation gap | 0.4 s | Missing-frame count times actual hop |
+| Interpolation endpoint difference | 4 m/s | Immediate measured endpoints must be close in speed |
+| Main median / mean | 51 / 10 frames | Applied separately to finite envelope sections |
+| Peak support neighbourhood | ±40 ms and ±4 m/s | Both conditions must hold for a supporting raw frame |
+| Minimum other peak support | ceil(20 ms / hop) | 34 other frames at the current settings |
+| Low-speed threshold / run duration | 5 m/s / 100 ms | Region searched before the selected peak |
+| Top search look-back | 1.5 s | Before selected smoothed peak time |
+| Top raw-only median | 30 ms, 10% minimum raw coverage | Centre must itself be measured |
+| Required near-minimum valley duration | 50 ms | Sustained measured support |
+| Gap override | >35 ms | Separation between immediate measured bounding observations |
+| Onset search look-back / minimum run | 1 s / 30 ms | Before the selected low-region start |
+| Maximum linked-run separation | 0.6 s | Link earlier qualifying runs backwards |
+| Onset fitting window / bins | 100 ms / 5 ms | Initial raw/accepted-interpolated speeds |
+| Maximum unsupported fit separation | 10 ms | Stops the fit interval at a larger unsupported gap |
+| Minimum fit span / rise | 25 ms / 0.30 m/s | Applied with the positive-slope requirement |
+| Minimum fit R² | 0.60 | Line agreement, not event-time accuracy |
+| Maximum backward extrapolation | **200 ms** | Farther zero intercepts are rejected |
 
-Most run durations are calculated as frame count times actual hop spacing. The main median frame count is calculated earlier from the manually assigned script `dt = 5.8957e-04` s. `DetectSwingEvents` derives actual hop spacing from `t`, but does not recalculate that supplied frame count. Its separate robust-median frame count does use actual spacing.
+At 44.1 kHz, the selected frame has **512 measured samples**, an actual duration
+of **11.610 ms**, a **26-sample hop** and **0.58957 ms updates**. Actual overlap is
+94.922%; frequency-grid spacing is 86.133 Hz and speed-grid spacing is 0.53833 m/s.
+There is no zero-padding because FFT length equals measured frame length.
+The update interval is not independent time resolution.
 
-`MaxTopGap_s` applies to unfilled gaps only. Already interpolated gaps participate in low-region classification through their smoothed speeds. The interpolation and low-region limits therefore control different operations.
+The main 30 ms moving median uses the original fixed `dt = 5.8957e-4` conversion
+to 51 frames. Other event-time rules use the returned time axis. This conversion
+has not been changed during documentation. The raw-only top median uses actual hop.
 
-## Outputs and interpretation
+Some event-helper defaults differ from main-script values: 5 ms minimum valley
+and 300 ms maximum extrapolation are fallbacks only. The main script explicitly
+supplies **50 ms** and **200 ms**, which take precedence. Change main settings
+first when investigating the actual processing configuration.
 
-For each enabled recording, the main script displays the CA/OS spectrogram comparison with magenta power-gated candidate detections and calls `PlotSwingEvents`. The standalone cluster display and `PlotSpectrogram`/`PlotSpeedvsTime` calls are commented out. `ShowPowerGatedCandidates` currently does not toggle the comparison overlays because there is no corresponding `if` condition.
+## 7. Outputs and definitions
 
-| Workspace variable | Contents |
+| Workspace output | Contents |
 | --- | --- |
-| `ClusterMaps` | Independently clustered CA/OS maps for the current or final recording. |
-| `DetectionClustered` / `ClusterMap` | Selected detector's retained cells / labels for the current or final recording. |
-| `CandidatesCA` / `CandidatesOS` | Power-gated detections before DBSCAN for the current or final recording. |
-| `AllSwingMetrics` | One metrics row per selected recording, with its relative recording path. |
-| `AllSwingTraces{i}` | Raw, filled, smoothed and robust envelopes, masks, candidate comparison and effective parameters. |
-| `metrics` / `trace` | Swing outputs for the current or final recording. |
+| `AllSwingMetrics` | One full metrics/diagnostics row per selected file, including status |
+| `AllSwingTraces{k}` | Matching envelopes, interpolation and region masks, fit/candidate evidence, parameters |
+| `Comparison` | Compact pipeline results plus new empty video-reference columns |
 
-| Swing metric | Interpretation |
+The comparison table keeps these existing column names:
+
+| Column | Definition |
 | --- | --- |
-| `PeakSpeedTime_s` | Smoothed-peak timestamp at a measured frame; timing endpoint used below. |
-| `PeakRadialSpeed_mps` / `RawPeakTime_s` | Highest raw speed and its timestamp within the local peak window. |
-| `BackswingStartTime_s` | Start of the selected/linked sustained motion run. |
-| `TopOfBackswingTime_s` | Selected robust-valley, gap-midpoint or rise timestamp. |
-| `BackswingDuration_s` | Selected top minus backswing start. |
-| `DownswingDuration_s` | Smoothed peak minus selected top: a **top-to-peak proxy**, not independently measured impact timing. |
-| `TempoRatio` | Backswing duration divided by top-to-peak duration. |
-| `TopSource` / `TopSelectionReason` | Selected candidate type and selection explanation. |
-| `TopIsGapEstimate` | Whether the selected top is an inferred gap midpoint. |
-| `TopUsesMissingData` | Whether the selected low-speed region contains raw missing data; can be true for a measured top. |
-| `BackswingTouchesSearchStart` | Whether the selected run starts at the first frame of the backswing search; inspect for possible truncation. |
-| `Status` | Outcome or reason events/durations could not be completed. |
+| `Recording` | Path relative to `Datasets` |
+| `Pipeline_BackswingDuration_s` | Selected top minus final onset |
+| `Pipeline_DownswingDuration_s` | Selected smoothed-peak time minus top; not impact-based |
+| `Pipeline_RawPeakRadialSpeed_mps` | Selected supported raw-peak amplitude |
+| `Pipeline_SmoothedPeakRadialSpeed_mps` | Smoothed value at the selected peak timestamp |
+| `Pipeline_TempoRatio` | Backswing duration divided by top-to-peak duration |
+| `Video_BackswingDuration_s` | Empty manual-reference placeholder, in seconds |
+| `Video_DownswingDuration_s` | Empty manual-reference top-to-speed-peak duration |
+| `Video_PeakRadialSpeed_mps` | Legacy name for a manually entered video speed; does not prove matching projection |
+| `Video_TempoRatio` | Empty manual-reference ratio placeholder |
+| `Reference_Notes` | Optional notes on reference quality or annotations |
 
-Additional candidate timestamps and gap diagnostics remain in `AllSwingMetrics` and `trace.TopComparison`. Missing events/durations remain `NaN`; inspect `Status` rather than treating every row as a complete detection.
+Status is retained in `AllSwingMetrics`, **not** automatically in `Comparison`.
+`NaN` means unavailable or not entered; it does not mean zero duration/speed/error.
+Raw and smoothed peaks can occur at different times. Since raw selection is
+support-based and smoothing uses neighbouring values, do not assume the selected
+smoothed value must always be below the selected raw value.
 
-The global envelope peak can be affected by another movement or a retained high-speed artefact. Missing returns near low speed can have causes other than turnaround. Validate event timestamps against video or another reference before interpreting physical swing phases.
+The supplied `Results` CSVs already contain reference measurements. Running the
+pipeline does not read or overwrite them. A new `Comparison` table starts with
+missing video values, even if an old CSV has annotations.
 
-### Optional export
+## 8. Save results and figures
 
-The script retains results in the workspace; export lines are commented out by default. After processing, for example:
+CSV writing remains commented out at the bottom of the main script. To save a
+NEW timestamped comparison file, uncomment that block. It writes under `Results`.
+Keep existing reference-filled CSVs unchanged when rerunning pipeline settings.
+
+You can also save the diagnostic workspace outputs after a run:
 
 ```matlab
-writetable(AllSwingMetrics, fullfile(projectRoot, 'SwingMetrics.csv'));
-save(fullfile(projectRoot, 'SwingDetectionResults.mat'), ...
-    'AllSwingMetrics', 'AllSwingTraces', 'SwingParameters');
+save(fullfile(projectRoot, 'Results', 'My_Analysis_Run.mat'), ...
+    'AllSwingMetrics', 'AllSwingTraces', 'Comparison', 'SwingParameters', ...
+    'fc', 'CPI', 'overlapFrac', 'PFA', 'UseOSCFAR', 'wavFile_CW_All');
 ```
 
-## Troubleshooting
+This filename is an example and will overwrite an existing file with that name.
+Use a distinct name per analysis, and retain the exact code version and file list.
+Save `AllSwingTraces` if you need to inspect inferred gaps or onset fits later.
 
-| Symptom | Check |
+`PlotSwingEvents` optionally returns two figure handles:
+
+```matlab
+[figSpectrogram, figEnvelope] = PlotSwingEvents(t, DisplaySpeed, ...
+    DisplayPowerDB, SpectrogramBounds, metrics, trace, wavFile_CW);
+exportgraphics(figEnvelope, 'Swing_Envelope.pdf', 'ContentType', 'vector');
+savefig(figEnvelope, 'Swing_Envelope.fig');
+```
+
+Use MATLAB's figure controls to zoom or save the figures manually if preferred.
+The event figures annotate timestamps, raw/smoothed peaks, durations and tempo.
+The envelope view distinguishes measured points, accepted interpolation, selected
+gaps, raw-peak support and accepted onset extrapolation. It does not recalculate events.
+
+`PlotSpectrogram` retains its original unnormalised `20*log10(abs(S))` display.
+`PlotSpeedvsTime` and the event spectrogram use recording-relative displays.
+Identical colour limits do not make these different display scales equivalent.
+
+## 9. Run CFAR verification separately
+
+Open the root `Test_CFAR.m` and press Run. The `Tests/Test_CFAR.m` entry is only a
+launcher for that same root script. It avoids maintaining two copies of settings.
+The test clears the workspace, uses fixed seed 4022 and can open 16 figures.
+
+- **Test 1:** 100,000 columns of independent exponential power, in batches of
+  1,000, check the nominal threshold formulas. Every detection is a false alarm.
+- **Test 2:** ten 3 s real Gaussian-noise records pass through the actual Hamming
+  STFT and conditioning. This checks empirical false alarms after processing.
+- **Test 3:** a flat track and three downward-opening speed parabolas are converted
+  to real Doppler cosines, combined with shared noise, and processed. Peak speed
+  is 45 m/s; endpoint drops are 0, 5, 15 and 40 m/s, over 0.6, 0.6, 0.6 and 0.2 s.
+  All speeds stay positive. Signal amplitude and noise standard deviation are one.
+
+`PFA` is detections divided by eligible tested noise cells. Exact-bin `PD` is the
+fraction of scored active frames detected at the strongest noise-free target bin.
+Nearby-bin PD separately accepts ±1 bin. False alarms in signal records are counted
+only in target-free frames, excluding boundary overlaps. Other crossings during
+the arc may be target-associated and are not automatically false alarms.
+
+These tests exclude the original-power gate, clustering and swing-event extraction.
+Overlapping decisions are correlated, and all arcs share noise. A 100% observed
+hit fraction at one amplitude is not a general guarantee of perfect detection.
+
+`SaveResults = true` and `SavePlots = true` create a new timestamped `CFAR_Check_*`
+folder beside the root script. It contains PFA/PD CSV tables, settings/results in
+`CFAR_Verification.mat`, detection overlays and threshold-diagnostic PNGs.
+Set either flag to false before running if you do not want those saved outputs.
+
+## 10. Function guide
+
+| Function | Responsibility |
 | --- | --- |
-| Missing configuration error | Create `config_local.m` from `config_local_example.m` and define `dataRoot`. |
-| Empty results and no processing figures | Uncomment at least one entry in `wavFile_CW_All`. |
-| Dataset/recording not found | Check `dataRoot` and each relative entry in `wavFile_CW_All`. |
-| `dbscan` unavailable | Check Statistics and Machine Learning Toolbox availability. |
-| No envelope or low-speed region | Inspect retained clusters and the raw/smoothed traces; check speed/power gates and region thresholds. |
-| Top repeatedly inferred from a gap | Inspect raw dropouts, endpoint speeds and bracket durations in `trace.TopComparison`. |
-| Incomplete durations | Inspect `Status`, candidate timestamps, backswing support and event order. |
+| `compute_spectrogram` | Complex, centred STFT and frequency/time axes |
+| `CA_CFAR` | Mean-equivalent reference-sum threshold, edge allocation and crossings |
+| `OS_CFAR` | Ascending-rank threshold with numerically solved PFA scale |
+| `ClusterDetections` | DBSCAN grouping in scaled time-speed space |
+| `DetectSwingEvents` | Envelope conditioning and supported peak/hybrid top/linked onset |
+| `CreateComparisonTable` | Compact table construction; no file I/O |
+| `PlotSwingEvents` | Two separate annotated figures from stored decisions |
+| `PlotSpectrogram` | Signed-frequency display |
+| `PlotSpeedvsTime` | Nonnegative radial-speed display |
 
+Each function now has expanded help comments describing inputs, outputs, units
+and important assumptions. Inspect the code or enter, for example:
 
+```matlab
+help DetectSwingEvents
+help compute_spectrogram
+```
 
+Local helper comments in `DetectSwingEvents` explain run finding, candidate
+support, gap duration conventions, robust fitting, R² and rejected-fit fallbacks.
+
+## 11. Troubleshooting
+
+| Message or symptom | What to check |
+| --- | --- |
+| Bundled Datasets folder missing | Extract the whole archive and keep its folder layout |
+| Recording not found | Use the exact relative path/case from `AvailableRecordings.csv` |
+| No selected recordings | Uncomment at least one existing `fullfile` entry |
+| `dbscan` unavailable | Install/enable Statistics and Machine Learning Toolbox |
+| Missing top/onset/durations | Inspect `Status`, gaps and event evidence; a numerical peak alone does not establish valid timing |
+| New CSV has empty video values | Expected: `CreateComparisonTable` does not merge old references |
+| Too many figures | Comment out plotting calls for batch-only metric extraction |
+| Test seems slow | It intentionally processes many noise cells and saves high-resolution plots |
+| Different outcome on an old or modified recording | Confirm exact settings, input file, first-channel selection and analysis version |
+
+Keep the whole project together; no `config_local.m`, external `dataRoot` setting
+or hard-coded user directory is required. The `.gitignore` intentionally allows
+the bundled `Datasets` and reference Results CSVs to be included, while ignoring
+new verification runs and common temporary outputs.
